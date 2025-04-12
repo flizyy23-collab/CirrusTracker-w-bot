@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { getPlayerUsername, getOwedAspects, getLeaderboard} = require("../../database");
-const {raids} = require("../../misc");
+const {raids, daysToTimestamp} = require("../../misc");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -23,7 +23,7 @@ module.exports = {
         let raid = interaction.options.getString('type');
         raid = parseInt(raid);
 
-        let leaderData = await getLeaderboard(raid, (days) ? days : -1);
+        let leaderData = await getLeaderboard(raid, daysToTimestamp((days) ? days : -1));
         let fields = [];
 
         for (const [uuid, raidCount] of leaderData) {

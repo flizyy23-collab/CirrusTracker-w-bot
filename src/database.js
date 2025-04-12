@@ -215,7 +215,7 @@ async function updateGuild(uuid) {
     }
 }
 
-async function getRaids(uuid, days = -1) {
+async function getRaids(uuid, timestamp = null) {
     try {
         const connection = await pool.getConnection();
 
@@ -226,9 +226,9 @@ async function getRaids(uuid, days = -1) {
 
         const params = [uuid, uuid, uuid, uuid];
 
-        if (days > -1) {
-            query += ` AND time > DATE_SUB(NOW(), INTERVAL ? DAY)`;
-            params.push(days);
+        if (timestamp) {
+            query += ` AND time > ?`;
+            params.push(timestamp);
         }
 
         const [rows] = await connection.execute(query, params);
@@ -303,7 +303,7 @@ async function getOwedAspects() {
     return [];
 }
 
-async function getLeaderboard(raid, days = -1) {
+async function getLeaderboard(raid, timestamp = null) {
     try {
         let playerMap = new Map();
 
@@ -316,11 +316,11 @@ async function getLeaderboard(raid, days = -1) {
 
         for (const row of rows) {
             let uuid = row.uuid;
-            let raids = await getRaids(uuid, days);
+            let raids = await getRaids(uuid, timestamp);
 
             let raidCount = 0;
             for (const raidRow of raids) {
-                if ( raid === -1 || raidRow.raid === raid) raidCount++;
+                if (raid === -1 || raidRow.raid === raid) raidCount++;
             }
 
             playerMap.set(uuid, raidCount);
@@ -342,22 +342,21 @@ async function getLeaderboard(raid, days = -1) {
     return [];
 }
 
-async function getGXPLeaderboard(days = -1) {
+async function getGXPLeaderboard(timestamp = null) {
     try {
         let playerMap = new Map();
 
         const connection = await pool.getConnection();
         let query = `SELECT player_1, player_2, player_3, player_4, guild_xp FROM raids`;
 
-        if (days > -1) {
-            query += ` WHERE time > DATE_SUB(NOW(), INTERVAL ${days} DAY)`;
+        if (timestamp) {
+            query += ` WHERE time > ?`;
         }
 
         const [rows] = await connection.execute(query);
 
         for (const row of rows) {
-            let uuid = row.uuid;
-            let guildXP = row.guild_xp;
+            let guildXP = row.guild_xp / 4;
 
             if (row.player_1) playerMap.set(row.player_1, (playerMap.get(row.player_1) || 0) + guildXP);
             if (row.player_2) playerMap.set(row.player_2, (playerMap.get(row.player_2) || 0) + guildXP);
@@ -375,11 +374,12 @@ async function getGXPLeaderboard(days = -1) {
 
         return playerMap;
     } catch (err) {
-        console.error("Error getting leaderboard: ", err);
+        console.error("Error getting GXP leaderboard: ", err);
     }
 
     return [];
 }
+
 
 async function getPlayers() {
     try {

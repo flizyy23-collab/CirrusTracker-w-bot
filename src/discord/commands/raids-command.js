@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
 const axios = require('axios');
 const {getPlayerUUID, getRaids, getPlayerUsername} = require("../../database");
+const {daysToTimestamp} = require("../../misc");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -29,7 +30,7 @@ module.exports = {
         playerName = await getPlayerUsername(uuid);
 
         let raidCounts = [0, 0, 0, 0]
-        let raidsData = await getRaids(uuid, (days) ? days : -1);
+        let raidsData = await getRaids(uuid, daysToTimestamp((days) ? days : -1));
         for (let i = 0; i < raidsData.length; i++) {
             let raidIndex = raidsData[i].raid;
             raidCounts[raidIndex]++;

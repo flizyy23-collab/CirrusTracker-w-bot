@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { getPlayerUsername, getOwedAspects, getLeaderboard, getGXPLeaderboard} = require("../../database");
-const {raids} = require("../../misc");
+const {raids, daysToTimestamp} = require("../../misc");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -14,7 +14,7 @@ module.exports = {
         let days = interaction.options.getString('days');
         if (days) days = parseInt(days);
 
-        let leaderData = await getGXPLeaderboard((days) ? days : -1);
+        let leaderData = await getGXPLeaderboard(daysToTimestamp((days) ? days : -1));
         let fields = [];
 
         for (const [uuid, gxp] of leaderData) {

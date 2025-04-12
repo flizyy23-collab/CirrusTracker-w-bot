@@ -13,6 +13,14 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function daysToTimestamp(days) {
+  if (days <= 0) return null;
+
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 function requestUUID(username) {
   return new Promise((resolve, reject) => {
     const url = `https://api.mojang.com/users/profiles/minecraft/${username}`;
@@ -42,4 +50,4 @@ function requestUUID(username) {
   });
 }
 
-module.exports = {sleep, requestUUID, raids};
+module.exports = {sleep, requestUUID, raids, daysToTimestamp};
