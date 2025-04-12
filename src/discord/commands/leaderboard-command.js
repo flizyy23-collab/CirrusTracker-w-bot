@@ -17,7 +17,8 @@ module.exports = {
                 .setDescription('The time period for the leaderboard')
                 .addChoices(
                     { name: 'All Time', value: 'all' },
-                    { name: 'Weekly', value: 'weekly' },
+                    { name: 'This Week', value: 'thisweek' },
+                    { name: 'Last Week', value: 'lastweek' },
                     { name: 'Custom Days', value: 'custom' }
                 )
                 .setRequired(false)
@@ -32,9 +33,12 @@ module.exports = {
         let timestamp;
         let periodDescription;
 
-        if (period === 'weekly') {
+        if (period === 'thisweek') {
             timestamp = getLastPoolReset()
             periodDescription = 'This Week';
+        } else if (period === 'lastweek') {
+            timestamp = getLastPoolReset(1);
+            periodDescription = 'Last Week';
         } else if (period === 'custom' && days) {
             days = parseInt(days);
             timestamp = daysToTimestamp(days);

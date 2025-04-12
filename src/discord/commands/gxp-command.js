@@ -1,20 +1,48 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { getPlayerUsername, getOwedAspects, getLeaderboard, getGXPLeaderboard} = require("../../database");
-const {raids, daysToTimestamp} = require("../../misc");
+const { getPlayerUsername, getOwedAspects, getLeaderboard, getGXPLeaderboard } = require("../../database");
+const { raids, daysToTimestamp, getLastPoolReset } = require("../../misc");
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('gxp')
         .setDescription('Returns guild XP rankings')
         .addStringOption(option =>
+            option.setName('period')
+                .setDescription('The time period for the leaderboard')
+                .addChoices(
+                    { name: 'All Time', value: 'all' },
+                    { name: 'This Week', value: 'thisweek' },
+                    { name: 'Last Week', value: 'lastweek' },
+                    { name: 'Custom Days', value: 'custom' }
+                )
+                .setRequired(false)
+        )
+        .addStringOption(option =>
             option.setName('days')
-                .setDescription('The time period to check for raids')
+                .setDescription('Number of days (only used when period is "Custom Days")')
         ),
     async execute(interaction) {
+        const period = interaction.options.getString('period') || 'all';
         let days = interaction.options.getString('days');
-        if (days) days = parseInt(days);
+        let timestamp;
+        let periodDescription;
 
-        let leaderData = await getGXPLeaderboard(daysToTimestamp((days) ? days : -1));
+        if (period === 'thisweek') {
+            timestamp = getLastPoolReset();
+            periodDescription = 'This Week';
+        } else if (period === 'lastweek') {
+            timestamp = getLastPoolReset(1);
+            periodDescription = 'Last Week';
+        } else if (period === 'custom' && days) {
+            days = parseInt(days);
+            timestamp = daysToTimestamp(days);
+            periodDescription = `Last ${days} Day${days !== 1 ? "s" : ""}`;
+        } else {
+            timestamp = daysToTimestamp(-1);
+            periodDescription = 'All Time';
+        }
+
+        let leaderData = await getGXPLeaderboard(timestamp);
         let fields = [];
 
         for (const [uuid, gxp] of leaderData) {
@@ -31,10 +59,9 @@ module.exports = {
 
             return new EmbedBuilder()
                 .setColor(0x0099FF)
-                .setDescription("\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af")
                 .setTitle("Guild XP")
                 .setAuthor({ name: 'Guild Raid Leaderboard' })
-                .setDescription(`*${days ? `Last ${days} Day` + (days !== 1 ? "s" : "") : 'All Time'}*`)
+                .setDescription(`*${periodDescription}*`)
                 .addFields(...currentFields)
                 .setFooter({ text: `Page ${page + 1} of ${totalPages}` });
         };
@@ -62,7 +89,7 @@ module.exports = {
             await interaction.editReply({ components: [generateActionRow(currentPage)] });
 
             const filter = i => i.customId === 'prev' || i.customId === 'next';
-            const collector = embedMessage.createMessageComponentCollector({ filter, time: 60000 });
+            const collector = embedMessage.createMessageComponentCollector({ filter, time: 600000 });
 
             collector.on('collect', async i => {
                 if (i.customId === 'prev' && currentPage > 0) currentPage--;
