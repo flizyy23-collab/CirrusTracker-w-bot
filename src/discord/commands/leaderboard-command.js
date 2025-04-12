@@ -33,8 +33,7 @@ module.exports = {
         let periodDescription;
 
         if (period === 'weekly') {
-            let date = getLastPoolReset();
-            timestamp = date.getTime();
+            timestamp = getLastPoolReset()
             periodDescription = 'This Week';
         } else if (period === 'custom' && days) {
             days = parseInt(days);
