@@ -348,12 +348,14 @@ async function getGXPLeaderboard(timestamp = null) {
 
         const connection = await pool.getConnection();
         let query = `SELECT player_1, player_2, player_3, player_4, guild_xp FROM raids`;
+        let params = [];
 
         if (timestamp) {
             query += ` WHERE time > ?`;
+            params.push(timestamp);
         }
 
-        const [rows] = await connection.execute(query);
+        const [rows] = await connection.execute(query, params);
 
         for (const row of rows) {
             let guildXP = row.guild_xp / 4;
