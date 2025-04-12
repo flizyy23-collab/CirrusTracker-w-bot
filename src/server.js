@@ -6,6 +6,7 @@ const {IsAuthenticatedEndpoint} = require("./endpoints/is-authenticated-endpoint
 require("./discord/discord-bot");
 const {ReportAspectEndpoint} = require("./endpoints/report-aspect-endpoint");
 const {initQueue} = require("./player-queue");
+const {ToggleAspectsEndpoint} = require("./endpoints/toggle-aspects-endpoint");
 
 const app = express();
 const PORT = 80;
@@ -23,7 +24,8 @@ const endpoints = {
     'authenticate': new AuthenticateEndpoint(),
     'report-raid': new ReportRaidEndpoint(),
     'report-aspect': new ReportAspectEndpoint(),
-    'is-authenticated': new IsAuthenticatedEndpoint()
+    'is-authenticated': new IsAuthenticatedEndpoint(),
+    'toggle-aspects': new ToggleAspectsEndpoint()
 };
 
 function registerEndpoints(app) {

@@ -48,7 +48,8 @@ async function createTables() {
             CREATE TABLE IF NOT EXISTS players (
                 uuid VARCHAR(36) NOT NULL PRIMARY KEY,
                 username VARCHAR(16) NOT NULL,
-                guild VARCHAR(4) DEFAULT NULL
+                guild VARCHAR(4) DEFAULT NULL,
+                needs_aspects BOOLEAN DEFAULT 1 NOT NULL,
             );
         `;
 
@@ -270,13 +271,17 @@ async function getOwedAspects() {
 
         const connection = await pool.getConnection();
         const query = `
-            SELECT uuid FROM players WHERE guild = ?;
+            SELECT * FROM players WHERE guild = ?;
         `;
 
         const [rows] = await connection.execute(query, [config["guild-tag"]]);
 
         for (const row of rows) {
             let uuid = row.uuid;
+            let needsAspects = row.needs_aspects;
+
+            if (!needsAspects) continue;
+
             let aspects = await getAspects(uuid);
             let raids = await getRaids(uuid);
 
@@ -401,5 +406,33 @@ async function getPlayers() {
     return [];
 }
 
+async function toggleNeedsAspects(uuid) {
+    try {
+        const connection = await pool.getConnection();
+
+        const updateQuery = `
+            UPDATE players
+            SET needs_aspects = NOT needs_aspects
+            WHERE uuid = ?;
+        `;
+
+        await connection.execute(updateQuery, [uuid]);
+
+        const selectQuery = `
+            SELECT needs_aspects
+            FROM players
+            WHERE uuid = ?;
+        `;
+
+        const [rows] = await connection.execute(selectQuery, [uuid]);
+        connection.release();
+
+        return rows[0];
+    } catch (err) {
+        console.error("Error toggling needs aspects: ", err);
+        return null;
+    }
+}
+
 module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
-    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getGuild };
+    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getGuild, toggleNeedsAspects };
