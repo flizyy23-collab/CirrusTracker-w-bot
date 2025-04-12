@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { getPlayerUsername, getOwedAspects, getLeaderboard} = require("../../database");
-const {raids, daysToTimestamp} = require("../../misc");
+const {raids, daysToTimestamp, getLastPoolReset} = require("../../misc");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -13,17 +13,42 @@ module.exports = {
                 .addChoices(...getChoices())
         )
         .addStringOption(option =>
+            option.setName('period')
+                .setDescription('The time period for the leaderboard')
+                .addChoices(
+                    { name: 'All Time', value: 'all' },
+                    { name: 'Weekly', value: 'weekly' },
+                    { name: 'Custom Days', value: 'custom' }
+                )
+                .setRequired(false)
+        )
+        .addStringOption(option =>
             option.setName('days')
-                .setDescription('The time period to check for raids')
+                .setDescription('Number of days (only used when period is "Custom Days")')
         ),
     async execute(interaction) {
+        const period = interaction.options.getString('period') || 'all';
         let days = interaction.options.getString('days');
-        if (days) days = parseInt(days);
+        let timestamp;
+        let periodDescription;
+
+        if (period === 'weekly') {
+            let date = getLastPoolReset();
+            timestamp = date.getTime();
+            periodDescription = 'This Week';
+        } else if (period === 'custom' && days) {
+            days = parseInt(days);
+            timestamp = daysToTimestamp(days);
+            periodDescription = `Last ${days} Day${days !== 1 ? "s" : ""}`;
+        } else {
+            timestamp = daysToTimestamp(-1);
+            periodDescription = 'All Time';
+        }
 
         let raid = interaction.options.getString('type');
         raid = parseInt(raid);
 
-        let leaderData = await getLeaderboard(raid, daysToTimestamp((days) ? days : -1));
+        let leaderData = await getLeaderboard(raid, timestamp);
         let fields = [];
 
         for (const [uuid, raidCount] of leaderData) {
@@ -40,10 +65,9 @@ module.exports = {
 
             return new EmbedBuilder()
                 .setColor(0x0099FF)
-                .setDescription("\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af")
                 .setTitle(getRaidName(raid))
                 .setAuthor({ name: 'Guild Raid Leaderboard' })
-                .setDescription(`*${days ? `Last ${days} Day` + (days !== 1 ? "s" : "") : 'All Time'}*`)
+                .setDescription(`*${periodDescription}*`)
                 .addFields(...currentFields)
                 .setFooter({ text: `Page ${page + 1} of ${totalPages}` });
         };
@@ -85,15 +109,11 @@ module.exports = {
             });
         }
     },
-
-
 };
 
 function getChoices() {
     let choices = [];
-
     raids.forEach(raid => choices.push({ name: raid.name, value: `${raid.id}` }));
-
     return choices;
 }
 

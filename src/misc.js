@@ -21,6 +21,14 @@ function daysToTimestamp(days) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
+function getLastPoolReset() {
+    const date = new Date();
+    date.setUTCHours(17, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (date.getUTCDay() + 2) % 7);
+
+    return date;
+}
+
 function requestUUID(username) {
   return new Promise((resolve, reject) => {
     const url = `https://api.mojang.com/users/profiles/minecraft/${username}`;
@@ -50,4 +58,4 @@ function requestUUID(username) {
   });
 }
 
-module.exports = {sleep, requestUUID, raids, daysToTimestamp};
+module.exports = {sleep, requestUUID, raids, daysToTimestamp, getLastPoolReset};
