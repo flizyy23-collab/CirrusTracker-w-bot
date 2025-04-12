@@ -94,7 +94,7 @@ module.exports = {
             await interaction.editReply({ components: [generateActionRow(currentPage)] });
 
             const filter = i => i.customId === 'prev' || i.customId === 'next';
-            const collector = embedMessage.createMessageComponentCollector({ filter, time: 60000 });
+            const collector = embedMessage.createMessageComponentCollector({ filter, time: 600000 });
 
             collector.on('collect', async i => {
                 if (i.customId === 'prev' && currentPage > 0) currentPage--;
