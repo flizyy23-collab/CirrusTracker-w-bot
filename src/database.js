@@ -166,12 +166,12 @@ async function insertPlayer(uuid, username) {
         const connection = await pool.getConnection();
 
         const insertQuery = `
-            INSERT INTO players (uuid, username, guild)
-            VALUES (?, ?, ?)
+            INSERT INTO players (uuid, username, guild, needs_aspects)
+            VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE username = VALUES(username), guild = VALUES(guild);
         `;
 
-        await connection.execute(insertQuery, [uuid, username, guild]);
+        await connection.execute(insertQuery, [uuid, username, guild, 1]);
         connection.release();
     } catch (err) {
         console.error("Error inserting player: ", err);
