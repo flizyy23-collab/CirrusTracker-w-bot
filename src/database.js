@@ -49,7 +49,7 @@ async function createTables() {
                 uuid VARCHAR(36) NOT NULL PRIMARY KEY,
                 username VARCHAR(16) NOT NULL,
                 guild VARCHAR(4) DEFAULT NULL,
-                needs_aspects BOOLEAN DEFAULT 1 NOT NULL,
+                needs_aspects BOOLEAN DEFAULT 1 NOT NULL
             );
         `;
 
