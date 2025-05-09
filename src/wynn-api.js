@@ -19,6 +19,10 @@ function getWynnUser(uuid) {
 function getGuildRank(uuid) {
     return new Promise((resolve, reject) => {
         getWynnUser(uuid).then((wynnUser) => {
+            if (!wynnUser.guild || wynnUser.guild === "NULL") {
+                resolve(0);
+                return;
+            }
             resolve(wynnUser.guild.rankStars.length);
         }).catch(reject);
     });
