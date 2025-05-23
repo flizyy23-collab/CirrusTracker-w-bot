@@ -10,7 +10,7 @@ function getWynnUser(uuid) {
             if (!error && response.statusCode === 200) {
                 resolve(JSON.parse(body));
             } else {
-                reject('Request failed', error);
+                reject('WynnAPI request failed', response.error);
             }
         });
     });

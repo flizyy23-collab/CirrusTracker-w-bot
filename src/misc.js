@@ -49,7 +49,7 @@ function requestUUID(username) {
           resolve(null);
         }
       } else {
-        console.error('Request failed', error);
+        console.error('Mojang request failed', response.error);
         reject(error);
       }
     });
