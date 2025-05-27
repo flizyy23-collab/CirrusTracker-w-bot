@@ -49,7 +49,7 @@
       "clientId": "DISCORD_CLIENT_ID",
       "guild-tag": "GUILD_TAG",
       "minimum-rank": 2,
-      "host-port": 8080,
+      "host-port": 80,
       "sql": {
         "host": "DB_HOST",
         "user": "DB_USER",
