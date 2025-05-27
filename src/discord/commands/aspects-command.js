@@ -1,8 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
 const axios = require('axios');
 const {getPlayerUUID, getRaids, getPlayerUsername, getAspects, getGuild} = require("../../database");
-const {join} = require("path");
-const fs = require("fs");
+const { config } = require("../../config");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -22,11 +21,8 @@ module.exports = {
         }
 
         let guild = await getGuild(uuid);
-        const configPath = join(__dirname, '../../../config.json');
-        const data = fs.readFileSync(configPath, 'utf-8');
-        const config = JSON.parse(data);
 
-        if (!guild || guild !== config["guild-tag"]) {
+        if (!guild || guild !== config.get("guild-tag")) {
             await interaction.reply(`Player is not in the guild`);
             return;
         }

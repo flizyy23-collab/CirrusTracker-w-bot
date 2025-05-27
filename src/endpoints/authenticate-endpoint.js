@@ -2,10 +2,8 @@ const {getGuildRank} = require('../wynn-api')
 const {generateToken, getToken} = require("../authentication");
 const {sleep} = require("../misc");
 const request = require('request');
-const fs = require('fs')
-const {join} = require("path");
-const crypto = require('crypto');
 const {getPlayerUsername, insertPlayer} = require("../database");
+const { config } = require("../config");
 
 class AuthenticateEndpoint {
 
@@ -70,10 +68,7 @@ class AuthenticateEndpoint {
 }
 
 function getMinimumRank() {
-    const configPath = join(__dirname, '../../config.json');
-    const data = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(data);
-    return config['minimum-rank'];
+    return config.get("minimum-rank");
 }
 
 module.exports = { AuthenticateEndpoint }

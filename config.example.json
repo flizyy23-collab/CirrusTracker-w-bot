@@ -1,0 +1,13 @@
+{
+  "token": "DISCORD_AUTH_TOKEN",
+  "clientId": "DISCORD_CLIENT_ID",
+  "guild-tag": "TBGM",
+  "minimum-rank": 2,
+  "host-port": 8080,
+  "sql": {
+    "host": "0.0.0.0",
+    "user": "root",
+    "password": "password",
+    "database": "wynntracker"
+  }
+}
