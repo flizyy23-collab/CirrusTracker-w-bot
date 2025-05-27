@@ -39,7 +39,7 @@
 3. Auto-generate a ```config.json``` file by running the server:
 
    ```bash
-   node start
+   npm run start
    ```
 
 4. Fill in ```config.json``` with the appropriate values:
@@ -63,7 +63,7 @@
 5. Start the server:
 
    ```bash
-   npm start
+   npm run start
    ```
    
 ---
