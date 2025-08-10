@@ -1,21 +1,17 @@
 const mysql = require('mysql2/promise');
-const { join } = require("path");
-const fs = require("fs");
 const {getPlayerGuild} = require("./wynn-api");
+const { config } = require("./config");
 const {removeToken} = require("./authentication");
 
 let pool;
 
 function databaseInit() {
-    const configPath = join(__dirname, '../config.json');
-    const data = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(data);
 
     pool = mysql.createPool({
-        host: config.sql.host,
-        user: config.sql.user,
-        password: config.sql.password,
-        database: config.sql.database,
+        host: config.get("sql.host"),
+        user: config.get("sql.user"),
+        password: config.get("sql.password"),
+        database: config.get("sql.database"),
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0
@@ -268,9 +264,6 @@ async function getAspects(uuid) {
 }
 
 async function getOwedAspects() {
-    const configPath = join(__dirname, '../config.json');
-    const data = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(data);
 
     try {
         let playerMap = new Map();
@@ -280,7 +273,7 @@ async function getOwedAspects() {
             SELECT * FROM players WHERE guild = ?;
         `;
 
-        const [rows] = await connection.execute(query, [config["guild-tag"]]);
+        const [rows] = await connection.execute(query, [config.get("guild-tag")]);
 
         for (const row of rows) {
             let uuid = row.uuid;

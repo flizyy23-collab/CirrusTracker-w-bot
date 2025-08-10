@@ -1,6 +1,5 @@
 const request = require('request');
-const {join} = require("path");
-const fs = require("fs");
+const { config } = require("./config");
 
 function getWynnUser(uuid) {
     return new Promise((resolve, reject) => {
@@ -35,13 +34,9 @@ async function getPlayerGuild(uuid) {
 }
 
 async function isPlayerInGuild(uuid) {
-    const configPath = join(__dirname, '../config.json');
-    const data = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(data);
-
     let player = await getWynnUser(uuid);
     let guild = player.guild;
-    return guild.prefix === config["guild-tag"];
+    return guild.prefix === config.get("guild-tag");
 }
 
 module.exports = {getGuildRank, isPlayerInGuild, getPlayerGuild};

@@ -7,23 +7,18 @@ require("./discord/discord-bot");
 const {ReportAspectEndpoint} = require("./endpoints/report-aspect-endpoint");
 const {initQueue} = require("./player-queue");
 const {ToggleAspectsEndpoint} = require("./endpoints/toggle-aspects-endpoint");
-const {join} = require("path");
-const fs = require("fs");
-
-const configPath = join(__dirname, '../config.json');
-const data = fs.readFileSync(configPath, 'utf-8');
-const config = JSON.parse(data);
+const { config } = require("./config");
 
 const app = express();
-const PORT = config['host-port'] || 3000;
+const PORT = config.get("host-port") || 3000;
 
-app.listen(PORT, '0.0.0.0', (error) => {
+app.listen(PORT, '0.0.0.0', async (error) => {
     if (!error) console.log("Server is Successfully Running, and App is listening on port " + PORT)
     else console.log("Error occurred, server can't start", error);
 
-    databaseInit();
-    registerEndpoints(app);
-    initQueue();
+    await databaseInit();
+    await registerEndpoints(app);
+    await initQueue();
 });
 
 const endpoints = {
