@@ -1,5 +1,4 @@
 const {getToken} = require("../authentication");
-const {isPlayerInGuild} = require("../wynn-api");
 const {insertRaid, getPlayerUUID, insertPlayer} = require("../database");
 const {requestUUID} = require("../misc");
 
@@ -24,7 +23,6 @@ class ReportRaidEndpoint {
             let tokenObject = await getToken(reporter);
 
             if (!tokenObject || tokenObject.token !== token || !tokenObject.isAuthenticated()) return res.status(400).send("Invalid token");
-            if (!await isPlayerInGuild(reporter)) return res.status(400).send("Reporter is not in the guild");
 
             let players = [player1, player2, player3, player4];
 

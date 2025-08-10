@@ -1,5 +1,4 @@
 const {getToken} = require("../authentication");
-const {isPlayerInGuild} = require("../wynn-api");
 const {getPlayerUUID, insertAspect} = require("../database");
 const {requestUUID} = require("../misc");
 
@@ -24,7 +23,6 @@ class ReportAspectEndpoint {
             let tokenObject = await getToken(reporter);
 
             if (!tokenObject || tokenObject.token !== token || !tokenObject.isAuthenticated()) return res.status(400).send("Invalid token");
-            if (!await isPlayerInGuild(reporter)) return res.status(400).send("Reporter is not in the guild");
 
             let giverUUID = await getPlayerUUID(giver);
             let receiverUUID = await getPlayerUUID(receiver);

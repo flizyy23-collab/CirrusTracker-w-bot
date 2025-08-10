@@ -2,6 +2,7 @@ const mysql = require('mysql2/promise');
 const { join } = require("path");
 const fs = require("fs");
 const {getPlayerGuild} = require("./wynn-api");
+const {removeToken} = require("./authentication");
 
 let pool;
 
@@ -199,6 +200,11 @@ async function getGuild(uuid) {
 
 async function updateGuild(uuid) {
     let guild = await getPlayerGuild(uuid);
+
+    let previousGuild = await getGuild(uuid);
+    if (guild === previousGuild) return;
+
+    removeToken(uuid);
 
     try {
         const connection = await pool.getConnection();

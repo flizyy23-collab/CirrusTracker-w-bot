@@ -16,6 +16,10 @@ function generateToken(uuid) {
     return token;
 }
 
+function removeToken(uuid) {
+    if (tokenMap.has(uuid)) tokenMap.delete(uuid);
+}
+
 class Token {
     constructor(token) {
         this.token = token;
@@ -31,5 +35,5 @@ class Token {
     }
 }
 
-module.exports = {generateToken, getToken, Token};
+module.exports = {generateToken, getToken, removeToken, Token};
 

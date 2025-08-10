@@ -1,4 +1,4 @@
-const {getGuildRank} = require('../wynn-api')
+const {getGuildRank, isPlayerInGuild} = require('../wynn-api')
 const {generateToken, getToken} = require("../authentication");
 const {sleep} = require("../misc");
 const request = require('request');
@@ -12,6 +12,8 @@ class AuthenticateEndpoint {
     async call(req, res) {
         if (!req.query.uuid) return res.status(400).send("Missing parameters");
         let {uuid} = req.query;
+
+        if (!await isPlayerInGuild(uuid)) return res.status(400).send("Player is not in the guild");
 
         let token = generateToken(uuid);
         res.status(200).send(token);
