@@ -14,7 +14,8 @@ function databaseInit() {
         database: config.get("sql.database"),
         waitForConnections: true,
         connectionLimit: 10,
-        queueLimit: 0
+        queueLimit: 0,
+        timezone: 'Z' // Force UTC timezone
     });
 
     createTables();
@@ -63,6 +64,26 @@ async function createTables() {
         `;
 
         await connection.execute(createAspectTableQuery);
+
+        const createAccountLinksTableQuery = `
+            CREATE TABLE IF NOT EXISTS account_links (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                discord_id VARCHAR(20) NOT NULL,
+                minecraft_uuid VARCHAR(36) NOT NULL,
+                minecraft_username VARCHAR(16) NOT NULL,
+                verification_code VARCHAR(10) NOT NULL,
+                verified BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                verified_at TIMESTAMP NULL DEFAULT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                UNIQUE KEY unique_discord (discord_id),
+                UNIQUE KEY unique_minecraft (minecraft_uuid),
+                INDEX idx_verification_code (verification_code),
+                INDEX idx_verified (verified)
+            );
+        `;
+
+        await connection.execute(createAccountLinksTableQuery);
 
         connection.release();
     } catch (err) {
@@ -434,5 +455,167 @@ async function toggleNeedsAspects(uuid) {
     }
 }
 
+// Account linking functions
+async function createAccountLink(discordId, minecraftUuid, minecraftUsername, verificationCode, expiresAt) {
+    try {
+        const connection = await pool.getConnection();
+        
+        // Delete any existing unverified link for this discord user
+        await connection.execute(
+            'DELETE FROM account_links WHERE discord_id = ? AND verified = FALSE', 
+            [discordId]
+        );
+        
+        // Convert JavaScript Date to MySQL timestamp format
+        const mysqlExpiresAt = expiresAt.toISOString().slice(0, 19).replace('T', ' ');
+        
+        const insertQuery = `
+            INSERT INTO account_links (discord_id, minecraft_uuid, minecraft_username, verification_code, expires_at)
+            VALUES (?, ?, ?, ?, ?);
+        `;
+        
+        await connection.execute(insertQuery, [discordId, minecraftUuid, minecraftUsername, verificationCode, mysqlExpiresAt]);
+        connection.release();
+        return true;
+    } catch (err) {
+        console.error("Error creating account link: ", err);
+        return false;
+    }
+}
+
+async function verifyAccountLink(verificationCode) {
+    try {
+        const connection = await pool.getConnection();
+        
+        // Check if code exists and hasn't expired
+        const selectQuery = `
+            SELECT * FROM account_links 
+            WHERE verification_code = ? AND verified = FALSE AND expires_at > NOW();
+        `;
+        
+        const [rows] = await connection.execute(selectQuery, [verificationCode]);
+        
+        if (rows.length === 0) {
+            connection.release();
+            return null; // Code not found or expired
+        }
+        
+        const link = rows[0];
+        
+        // Update to verified
+        const updateQuery = `
+            UPDATE account_links 
+            SET verified = TRUE, verified_at = UTC_TIMESTAMP() 
+            WHERE id = ?;
+        `;
+        
+        await connection.execute(updateQuery, [link.id]);
+        connection.release();
+        
+        return {
+            discordId: link.discord_id,
+            minecraftUuid: link.minecraft_uuid,
+            minecraftUsername: link.minecraft_username
+        };
+    } catch (err) {
+        console.error("Error verifying account link: ", err);
+        return null;
+    }
+}
+
+async function getAccountLink(discordId) {
+    try {
+        const connection = await pool.getConnection();
+        
+        const selectQuery = `
+            SELECT * FROM account_links 
+            WHERE discord_id = ? AND verified = TRUE;
+        `;
+        
+        const [rows] = await connection.execute(selectQuery, [discordId]);
+        connection.release();
+        
+        return rows[0] || null;
+    } catch (err) {
+        console.error("Error getting account link: ", err);
+        return null;
+    }
+}
+
+async function getAccountLinkByMinecraft(minecraftUuid) {
+    try {
+        const connection = await pool.getConnection();
+        
+        const selectQuery = `
+            SELECT * FROM account_links 
+            WHERE minecraft_uuid = ? AND verified = TRUE;
+        `;
+        
+        const [rows] = await connection.execute(selectQuery, [minecraftUuid]);
+        connection.release();
+        
+        return rows[0] || null;
+    } catch (err) {
+        console.error("Error getting account link by minecraft: ", err);
+        return null;
+    }
+}
+
+async function removeAccountLink(discordId) {
+    try {
+        const connection = await pool.getConnection();
+        
+        const deleteQuery = `
+            DELETE FROM account_links WHERE discord_id = ?;
+        `;
+        
+        const [result] = await connection.execute(deleteQuery, [discordId]);
+        connection.release();
+        
+        return result.affectedRows > 0;
+    } catch (err) {
+        console.error("Error removing account link: ", err);
+        return false;
+    }
+}
+
+async function removeAccountLinkByMinecraft(minecraftUuid) {
+    try {
+        const connection = await pool.getConnection();
+        
+        const deleteQuery = `
+            DELETE FROM account_links WHERE minecraft_uuid = ?;
+        `;
+        
+        const [result] = await connection.execute(deleteQuery, [minecraftUuid]);
+        connection.release();
+        
+        return result.affectedRows > 0;
+    } catch (err) {
+        console.error("Error removing account link by minecraft: ", err);
+        return false;
+    }
+}
+
+async function cleanupExpiredLinks() {
+    try {
+        const connection = await pool.getConnection();
+        
+        const deleteQuery = `
+            DELETE FROM account_links 
+            WHERE verified = FALSE AND expires_at < NOW();
+        `;
+        
+        const [result] = await connection.execute(deleteQuery);
+        connection.release();
+        
+        return result.affectedRows;
+    } catch (err) {
+        console.error("Error cleaning up expired links: ", err);
+        return 0;
+    }
+}
+
 module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
-    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getGuild, toggleNeedsAspects };
+    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getGuild, toggleNeedsAspects,
+    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, cleanupExpiredLinks };

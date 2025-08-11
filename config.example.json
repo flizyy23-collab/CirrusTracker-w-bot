@@ -4,6 +4,11 @@
   "guild-tag": "TBGM",
   "minimum-rank": 2,
   "host-port": 8080,
+  "account-linking": {
+    "required-role-id": "REQUIRED_ROLE_ID_TO_USE_LINK_COMMAND",
+    "linked-role-id": "ROLE_ID_GIVEN_TO_LINKED_PLAYERS",
+    "verification-expiry-minutes": 15
+  },
   "sql": {
     "host": "0.0.0.0",
     "user": "root",

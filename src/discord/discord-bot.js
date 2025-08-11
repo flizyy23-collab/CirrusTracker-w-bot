@@ -25,6 +25,15 @@ client.login(token).then(r => {
     console.log("Discord Bot Logged in")
 }).catch(console.error);
 
+// Initialize role manager when client is ready
+client.once('ready', () => {
+    console.log(`Discord bot ready as ${client.user.tag}`);
+    
+    // Initialize the role manager now that the client is ready
+    const roleManager = require('../features/account-linking/role-manager');
+    roleManager.init(client);
+});
+
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -46,3 +55,5 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
 });
+
+module.exports = { client };

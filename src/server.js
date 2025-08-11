@@ -8,6 +8,8 @@ require("./discord/discord-bot");
 const {ReportAspectEndpoint} = require("./features/aspects/report-aspect-endpoint");
 const {initQueue} = require("./features/player/player-queue");
 const {ToggleAspectsEndpoint} = require("./features/aspects/toggle-aspects-endpoint");
+const {VerifyLinkEndpoint} = require("./features/account-linking/verify-link-endpoint");
+const {UnlinkMinecraftEndpoint} = require("./features/account-linking/unlink-minecraft-endpoint");
 const { config } = require("./core/config");
 const {websocketInit, wsManager} = require("./features/websocket/websocket");
 
@@ -30,7 +32,9 @@ const endpoints = {
     'report-raid': new ReportRaidEndpoint(),
     'report-aspect': new ReportAspectEndpoint(),
     'is-authenticated': new IsAuthenticatedEndpoint(),
-    'toggle-aspects': new ToggleAspectsEndpoint()
+    'toggle-aspects': new ToggleAspectsEndpoint(),
+    'verify-link': new VerifyLinkEndpoint(),
+    'unlink-minecraft': new UnlinkMinecraftEndpoint()
 };
 
 function registerEndpoints(app) {
