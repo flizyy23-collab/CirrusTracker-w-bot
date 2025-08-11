@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { getPlayerUsername, getOwedAspects, getLeaderboard, getGXPLeaderboard } = require("../../database");
-const { raids, daysToTimestamp, getLastPoolReset } = require("../../misc");
+const { getPlayerUsername, getOwedAspects, getLeaderboard, getGXPLeaderboard } = require("../../core/database");
+const { raids, daysToTimestamp, getLastPoolReset } = require("../../core/utilities");
 
 module.exports = {
     data: new SlashCommandBuilder()

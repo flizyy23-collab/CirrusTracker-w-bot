@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { getPlayerUsername, getOwedAspects } = require("../../database");
+const { getPlayerUsername, getOwedAspects } = require("../../core/database");
 
 module.exports = {
     data: new SlashCommandBuilder()

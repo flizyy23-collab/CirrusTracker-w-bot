@@ -1,15 +1,15 @@
 const express = require('express');
 const http = require('http');
-const {databaseInit, insertRaid} = require("./database");
-const {AuthenticateEndpoint} = require("./endpoints/authenticate-endpoint");
-const {ReportRaidEndpoint} = require("./endpoints/report-raid-endpoint");
-const {IsAuthenticatedEndpoint} = require("./endpoints/is-authenticated-endpoint");
+const {databaseInit, insertRaid} = require("./core/database");
+const {AuthenticateEndpoint} = require("./features/auth/authenticate-endpoint");
+const {ReportRaidEndpoint} = require("./features/raids/report-raid-endpoint");
+const {IsAuthenticatedEndpoint} = require("./features/auth/is-authenticated-endpoint");
 require("./discord/discord-bot");
-const {ReportAspectEndpoint} = require("./endpoints/report-aspect-endpoint");
-const {initQueue} = require("./player-queue");
-const {ToggleAspectsEndpoint} = require("./endpoints/toggle-aspects-endpoint");
-const { config } = require("./config");
-const {websocketInit, wsManager} = require("./websocket");
+const {ReportAspectEndpoint} = require("./features/aspects/report-aspect-endpoint");
+const {initQueue} = require("./features/player/player-queue");
+const {ToggleAspectsEndpoint} = require("./features/aspects/toggle-aspects-endpoint");
+const { config } = require("./core/config");
+const {websocketInit, wsManager} = require("./features/websocket/websocket");
 
 const app = express();
 const server = http.createServer(app);

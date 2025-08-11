@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
 const axios = require('axios');
-const {getPlayerUUID, getRaids, getPlayerUsername, getAspects, getGuild} = require("../../database");
-const { config } = require("../../config");
+const {getPlayerUUID, getRaids, getPlayerUsername, getAspects, getGuild} = require("../../core/database");
+const { config } = require("../../core/config");
 
 module.exports = {
     data: new SlashCommandBuilder()
