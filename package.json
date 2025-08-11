@@ -16,7 +16,8 @@
     "express": "^4.21.0",
     "mysql2": "^3.11.3",
     "node-fetch": "^3.3.2",
-    "request": "^2.88.2"
+    "request": "^2.88.2",
+    "ws": "^8.18.3"
   },
   "description": ""
 }

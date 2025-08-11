@@ -202,6 +202,7 @@ async function updateGuild(uuid) {
 
     removeToken(uuid);
 
+
     try {
         const connection = await pool.getConnection();
 

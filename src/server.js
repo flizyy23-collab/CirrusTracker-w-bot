@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const {databaseInit, insertRaid} = require("./database");
 const {AuthenticateEndpoint} = require("./endpoints/authenticate-endpoint");
 const {ReportRaidEndpoint} = require("./endpoints/report-raid-endpoint");
@@ -8,17 +9,20 @@ const {ReportAspectEndpoint} = require("./endpoints/report-aspect-endpoint");
 const {initQueue} = require("./player-queue");
 const {ToggleAspectsEndpoint} = require("./endpoints/toggle-aspects-endpoint");
 const { config } = require("./config");
+const {websocketInit, wsManager} = require("./websocket");
 
 const app = express();
+const server = http.createServer(app);
 const PORT = config.get("host-port") || 3000;
 
-app.listen(PORT, '0.0.0.0', async (error) => {
+server.listen(PORT, '0.0.0.0', async (error) => {
     if (!error) console.log("Server is Successfully Running, and App is listening on port " + PORT)
     else console.log("Error occurred, server can't start", error);
 
     await databaseInit();
     await registerEndpoints(app);
     await initQueue();
+    websocketInit(server);
 });
 
 const endpoints = {

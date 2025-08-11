@@ -20,6 +20,19 @@ function removeToken(uuid) {
     if (tokenMap.has(uuid)) tokenMap.delete(uuid);
 }
 
+function findUuidByToken(token) {
+    for (let [uuid, tokenObj] of tokenMap) {
+        if (tokenObj.token === token && tokenObj.isAuthenticated()) {
+            return uuid;
+        }
+    }
+    return null;
+}
+
+function getAllTokens() {
+    return tokenMap;
+}
+
 class Token {
     constructor(token) {
         this.token = token;
@@ -35,5 +48,5 @@ class Token {
     }
 }
 
-module.exports = {generateToken, getToken, removeToken, Token};
+module.exports = {generateToken, getToken, removeToken, findUuidByToken, getAllTokens, Token};
 
