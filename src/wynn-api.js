@@ -9,7 +9,7 @@ function getWynnUser(uuid) {
             if (!error && response.statusCode === 200) {
                 resolve(JSON.parse(body));
             } else {
-                reject('WynnAPI request failed', response.error);
+                reject(new Error('WynnAPI request failed' + response.error));
             }
         });
     });
@@ -28,15 +28,26 @@ function getGuildRank(uuid) {
 }
 
 async function getPlayerGuild(uuid) {
-    let player = await getWynnUser(uuid);
-    if (!player.guild || player.guild === "NULL") return null;
-    return player.guild.prefix;
+
+    try {
+        let player = await getWynnUser(uuid);
+        if (!player.guild || player.guild === "NULL") return null;
+        return player.guild.prefix;
+    } catch (error) {
+        console.error('Error fetching player guild:', error);
+        return null;
+    }
 }
 
 async function isPlayerInGuild(uuid) {
-    let player = await getWynnUser(uuid);
-    let guild = player.guild;
-    return guild.prefix === config.get("guild-tag");
+    try {
+        let player = await getWynnUser(uuid);
+        let guild = player.guild;
+        return guild.prefix === config.get("guild-tag");
+    } catch (error) {
+        console.error('Error checking if player is in guild:', error);
+        return false;
+    }
 }
 
 module.exports = {getGuildRank, isPlayerInGuild, getPlayerGuild};
