@@ -640,6 +640,28 @@ async function cleanupExpiredLinks() {
     }
 }
 
+async function getPlayersWithVerifiedLinks() {
+    try {
+        const connection = await pool.getConnection();
+        
+        const query = `
+            SELECT p.uuid, p.username, p.guild, p.needs_aspects, 
+                   al.discord_id, al.minecraft_username
+            FROM players p
+            INNER JOIN account_links al ON p.uuid = al.minecraft_uuid
+            WHERE al.verified = TRUE;
+        `;
+        
+        const [rows] = await connection.execute(query);
+        connection.release();
+        
+        return rows;
+    } catch (err) {
+        console.error("Error getting players with verified links: ", err);
+        return [];
+    }
+}
+
 module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
     getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getGuild, toggleNeedsAspects,
-    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks };
+    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks };

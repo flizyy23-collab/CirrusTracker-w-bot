@@ -43,6 +43,9 @@ async function isPlayerInGuild(uuid) {
     try {
         let player = await getWynnUser(uuid);
         let guild = player.guild;
+
+        if (!guild || guild === "NULL") return false;
+
         return guild.prefix === config.get("guild-tag");
     } catch (error) {
         console.error('Error checking if player is in guild:', error);

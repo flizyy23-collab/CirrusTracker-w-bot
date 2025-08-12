@@ -11,6 +11,7 @@ const {initQueue} = require("./features/player/player-queue");
 const {ToggleAspectsEndpoint} = require("./features/aspects/toggle-aspects-endpoint");
 const {VerifyLinkEndpoint} = require("./features/account-linking/verify-link-endpoint");
 const {UnlinkMinecraftEndpoint} = require("./features/account-linking/unlink-minecraft-endpoint");
+const {RankEndpoint} = require("./features/ranks/rank-endpoint");
 const { config } = require("./core/config");
 const {websocketInit, wsManager} = require("./features/websocket/websocket");
 
@@ -35,7 +36,8 @@ const endpoints = {
     'is-authenticated': new IsAuthenticatedEndpoint(),
     'toggle-aspects': new ToggleAspectsEndpoint(),
     'verify-link': new VerifyLinkEndpoint(),
-    'unlink-minecraft': new UnlinkMinecraftEndpoint()
+    'unlink-minecraft': new UnlinkMinecraftEndpoint(),
+    'players': new RankEndpoint()
 };
 
 function registerEndpoints(app) {
