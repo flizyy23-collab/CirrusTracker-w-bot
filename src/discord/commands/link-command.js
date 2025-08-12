@@ -58,7 +58,7 @@ module.exports = {
                     .addFields(
                         { 
                             name: '📋 Command to Run', 
-                            value: `\`\`\`/tbgm verify ${result.code}\`\`\``,
+                            value: `\`\`\`/tbgm link ${result.code}\`\`\``,
                             inline: false 
                         },
                         { 

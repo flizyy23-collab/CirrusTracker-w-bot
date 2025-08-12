@@ -140,20 +140,32 @@ class AccountLinkingService {
      */
     async verifyLinkWithAuth(verificationCode, authenticatedUuid) {
         try {
-            const link = await verifyAccountLink(verificationCode);
+            // First get the link without verifying it to check UUID match
+            const { getUnverifiedAccountLink } = require('../../core/database');
+            const unverifiedLink = await getUnverifiedAccountLink(verificationCode);
             
-            if (!link) {
+            if (!unverifiedLink) {
                 return {
                     success: false,
                     error: 'Invalid or expired verification code.'
                 };
             }
 
-            // Verify that the authenticated UUID matches the one in the link
-            if (link.minecraftUuid !== authenticatedUuid) {
+            // Verify that the authenticated UUID matches the one in the link BEFORE verifying
+            if (unverifiedLink.minecraft_uuid !== authenticatedUuid) {
                 return {
                     success: false,
                     error: 'Authentication token does not match the Minecraft account being linked.'
+                };
+            }
+
+            // Now that we've verified the UUID matches, we can safely verify the link
+            const link = await verifyAccountLink(verificationCode);
+            
+            if (!link) {
+                return {
+                    success: false,
+                    error: 'Failed to verify account link.'
                 };
             }
 

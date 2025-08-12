@@ -7,15 +7,8 @@ const { getToken } = require('../auth/authentication');
 class UnlinkMinecraftEndpoint {
     async call(req, res) {
         try {
-            // Expect minecraft username, token, and uuid as query parameters
-            const { minecraft_username, token, uuid } = req.query;
-
-            if (!minecraft_username) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Missing minecraft_username parameter'
-                });
-            }
+            // Expect token, and uuid as query parameters
+            const { token, uuid } = req.query;
 
             if (!token || !uuid) {
                 return res.status(400).json({
@@ -33,25 +26,8 @@ class UnlinkMinecraftEndpoint {
                 });
             }
 
-            // Get the Minecraft UUID from username
-            const minecraftUuid = await requestUUID(minecraft_username);
-            if (!minecraftUuid) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Invalid Minecraft username'
-                });
-            }
-
-            // Verify the authenticated UUID matches the username being unlinked
-            if (minecraftUuid !== uuid) {
-                return res.status(403).json({
-                    success: false,
-                    error: 'Authentication token does not match the Minecraft account being unlinked'
-                });
-            }
-
             // Check if this Minecraft account is linked
-            const existingLink = await accountLinkingService.getLinkByMinecraft(minecraftUuid);
+            const existingLink = await accountLinkingService.getLinkByMinecraft(uuid);
             if (!existingLink) {
                 return res.status(404).json({
                     success: false,
@@ -60,7 +36,7 @@ class UnlinkMinecraftEndpoint {
             }
 
             // Remove the link
-            const success = await accountLinkingService.unlinkByMinecraft(minecraftUuid);
+            const success = accountLinkingService.unlinkByMinecraft(uuid);
 
             if (success) {
                 // Try to remove linked role from Discord user
@@ -73,7 +49,7 @@ class UnlinkMinecraftEndpoint {
 
                 return res.status(200).json({
                     success: true,
-                    message: `Minecraft account ${minecraft_username} has been unlinked from Discord`,
+                    message: `Minecraft account has been unlinked from Discord`,
                     discord_id: existingLink.discord_id
                 });
             } else {

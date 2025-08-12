@@ -36,11 +36,12 @@ class VerifyLinkEndpoint {
             const result = await accountLinkingService.verifyLinkWithAuth(code, uuid);
 
             if (result.success) {
-                // Try to assign linked role in Discord
+                // Try to assign linked role and ensure user has a rank role
                 try {
                     await roleManager.addLinkedRole(result.link.discordId);
+                    await roleManager.ensureUserHasRank(result.link.discordId);
                 } catch (roleError) {
-                    console.error('Error assigning linked role:', roleError);
+                    console.error('Error assigning roles:', roleError);
                     // Don't fail the verification if role assignment fails
                 }
 

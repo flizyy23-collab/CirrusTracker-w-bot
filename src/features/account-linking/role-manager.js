@@ -6,6 +6,7 @@ class RoleManager {
         this.guilds = new Map(); // Cache guild objects
         this.initialized = false;
         this.client = null; // Will be set by Discord bot
+        this.ranks = null; // Cache rank configuration
     }
 
     init(discordClient) {
@@ -15,6 +16,7 @@ class RoleManager {
         
         // Get role ID from config
         this.linkedRoleId = config.get('account-linking.linked-role-id');
+        this.ranks = config.get('ranks');
         
         // Cache guilds now that we have the client
         if (this.client && this.client.readyAt) {
@@ -150,6 +152,59 @@ class RoleManager {
 
         } catch (error) {
             console.error(`Error checking required role for user ${discordId}:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Check if user has any rank role and assign recruit if they don't
+     * @param {string} discordId - Discord user ID
+     * @returns {Promise<boolean>} Success status
+     */
+    async ensureUserHasRank(discordId) {
+        if (!this.ranks || !this.initialized || !this.client) {
+            console.warn('Role manager not properly initialized for rank assignment');
+            return false;
+        }
+
+        try {
+            // Get all rank role IDs
+            const rankRoleIds = Object.values(this.ranks).map(rank => rank['discord-role-id']);
+            
+            // Find the user in any guild
+            for (const [guildId, guild] of this.guilds) {
+                try {
+                    const member = await guild.members.fetch(discordId);
+                    if (member) {
+                        // Check if user has any rank role
+                        const hasRankRole = member.roles.cache.some(role => rankRoleIds.includes(role.id));
+                        
+                        if (!hasRankRole) {
+                            // Get recruit role ID
+                            const recruitRoleId = this.ranks.recruit?.['discord-role-id'];
+                            if (recruitRoleId) {
+                                await member.roles.add(recruitRoleId);
+                                console.log(`Assigned recruit role to user ${discordId} in guild ${guild.name}`);
+                                return true;
+                            } else {
+                                console.warn('Recruit role not configured');
+                                return false;
+                            }
+                        } else {
+                            console.log(`User ${discordId} already has a rank role`);
+                            return true;
+                        }
+                    }
+                } catch (memberError) {
+                    continue;
+                }
+            }
+
+            console.log(`User ${discordId} not found in any cached guilds`);
+            return false;
+
+        } catch (error) {
+            console.error(`Error ensuring user has rank role for ${discordId}:`, error);
             return false;
         }
     }

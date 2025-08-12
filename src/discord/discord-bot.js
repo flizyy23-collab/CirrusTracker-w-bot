@@ -2,9 +2,17 @@ const {Client, GatewayIntentBits, Collection, Events} = require("discord.js");
 const {join} = require("path");
 const {token} = require("../../config.json");
 const {readdirSync} = require("fs");
+const { chatBridge } = require('../features/chat-bridge/chat-bridge-service');
+const { rankService } = require('../features/ranks/rank-service');
 require('./deploy-commands');
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ] 
+});
 
 client.commands = new Collection();
 
@@ -32,6 +40,14 @@ client.once('ready', () => {
     // Initialize the role manager now that the client is ready
     const roleManager = require('../features/account-linking/role-manager');
     roleManager.init(client);
+    
+    // Initialize the chat bridge with Discord client
+    chatBridge.setDiscordClient(client);
+    console.log('Chat bridge initialized with Discord client');
+    
+    // Initialize the rank service with Discord client
+    rankService.setDiscordClient(client);
+    console.log('Rank service initialized with Discord client');
 });
 
 client.on(Events.InteractionCreate, async interaction => {
@@ -54,6 +70,10 @@ client.on(Events.InteractionCreate, async interaction => {
                 await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
         }
     }
+});
+
+client.on(Events.MessageCreate, async message => {
+    await chatBridge.handleDiscordMessage(message.author, message.content, message.channel.id);
 });
 
 module.exports = { client };

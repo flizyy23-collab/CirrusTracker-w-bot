@@ -62,12 +62,19 @@ class WebSocketManager {
         
         console.log(`Client connected: ${clientId} UUID: ${uuid || 'unauthenticated'} from ${clientInfo.ip}`);
 
+        // Process any queued promotions for this client
+        if (uuid) {
+            const { rankService } = require('../ranks/rank-service');
+            setTimeout(() => {
+                rankService.processQueueForClient(uuid);
+            }, 1000); // Small delay to ensure client is fully connected
+        }
+
         //TODO: Change this
         this.sendMessage(ws, 'connection', {
             type: 'authenticated',
             clientId: clientId,
             uuid: uuid,
-            authenticated: authenticated,
             timestamp: new Date().toISOString()
         });
 
@@ -118,7 +125,6 @@ class WebSocketManager {
         const client = this.connections.get(clientId);
         if (client) {
             console.log(`Client disconnected: ${clientId} UUID: ${client.uuid || 'unauthenticated'} (${code}: ${reason})`);
-            
             if (client.uuid) this.removeUuidConnection(client.uuid, clientId);
             
             this.connections.delete(clientId);

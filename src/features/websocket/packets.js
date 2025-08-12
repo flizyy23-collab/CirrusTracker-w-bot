@@ -7,6 +7,10 @@ const PACKET_TYPES = {
     PING: 'ping',
     HEARTBEAT: 'heartbeat',
     CHAT_MESSAGE: 'chat_message',
+    DISCORD_CHAT_MESSAGE: 'discord_chat_message',
+    CHAT_MESSAGE_ACK: 'chat_message_ack',
+    RANK_PROMOTION_REQUEST: 'rank_promotion_request',
+    RANK_PROMOTION_RESPONSE: 'rank_promotion_response',
     CONNECT: 'connect',
     DISCONNECT: 'disconnect',
     PONG: 'pong',
@@ -30,12 +34,8 @@ const heartbeatHandler = async (client, packet) => {
 };
 
 const chatMessageHandler = async (client, packet) => {
-    const { message, channel } = packet.data;
-    
-    // TODO: Implement chat message handling logic
-    // This could involve processing guild chat, parsing commands, etc.
-    
-    return null;
+    const { chatBridge } = require('../chat-bridge/chat-bridge-service');
+    return await chatBridge.handleMinecraftMessage(client, packet);
 };
 
 const connectHandler = async (client, packet) => {
@@ -59,11 +59,31 @@ const disconnectHandler = async (client, packet) => {
     };
 };
 
+const rankPromotionResponseHandler = async (client, packet) => {
+    const { requestId, success, error, targetUsername, newRank } = packet.data;
+    
+    console.log(`Rank promotion response received from ${client.uuid}: ${success ? 'SUCCESS' : 'FAILED'} for ${targetUsername} -> rank ${newRank}`);
+    
+    // Handle the response in the rank service
+    const { rankService } = require('../ranks/rank-service');
+    rankService.handlePromotionResponse(requestId, success, error);
+    
+    return {
+        type: 'rank_promotion_ack',
+        data: {
+            requestId: requestId,
+            acknowledged: true,
+            timestamp: Date.now()
+        }
+    };
+};
+
 // Map of packet types to their handlers
 const PACKET_HANDLERS = {
     [PACKET_TYPES.PING]: pingHandler,
     [PACKET_TYPES.HEARTBEAT]: heartbeatHandler,
     [PACKET_TYPES.CHAT_MESSAGE]: chatMessageHandler,
+    [PACKET_TYPES.RANK_PROMOTION_RESPONSE]: rankPromotionResponseHandler,
     [PACKET_TYPES.CONNECT]: connectHandler,
     [PACKET_TYPES.DISCONNECT]: disconnectHandler
 };
@@ -74,6 +94,7 @@ module.exports = {
     pingHandler,
     heartbeatHandler,
     chatMessageHandler,
+    rankPromotionResponseHandler,
     connectHandler,
     disconnectHandler
 };

@@ -597,6 +597,30 @@ async function removeAccountLinkByMinecraft(minecraftUuid) {
     }
 }
 
+async function getUnverifiedAccountLink(verificationCode) {
+    try {
+        const connection = await pool.getConnection();
+        
+        // Get unverified link without marking it as verified
+        const selectQuery = `
+            SELECT * FROM account_links 
+            WHERE verification_code = ? AND verified = FALSE AND expires_at > NOW();
+        `;
+        
+        const [rows] = await connection.execute(selectQuery, [verificationCode]);
+        connection.release();
+        
+        if (rows.length === 0) {
+            return null; // Code not found or expired
+        }
+        
+        return rows[0];
+    } catch (err) {
+        console.error("Error getting unverified account link: ", err);
+        return null;
+    }
+}
+
 async function cleanupExpiredLinks() {
     try {
         const connection = await pool.getConnection();
@@ -618,4 +642,4 @@ async function cleanupExpiredLinks() {
 
 module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
     getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getGuild, toggleNeedsAspects,
-    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, cleanupExpiredLinks };
+    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks };

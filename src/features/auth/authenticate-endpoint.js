@@ -16,7 +16,7 @@ class AuthenticateEndpoint {
         let token = generateToken(uuid);
         res.status(200).send(token);
 
-        await sleep(5000);
+        await sleep(2000);
         await this.checkForAuthentication(uuid, token);
     }
 
