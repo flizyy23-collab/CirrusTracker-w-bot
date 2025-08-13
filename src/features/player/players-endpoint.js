@@ -1,0 +1,86 @@
+const { getPlayersByGuild, getAccountLinksForPlayers } = require("../../core/database");
+const { rankService } = require("../ranks/rank-service");
+const { badgesService } = require("../badges/badges-service");
+const { config } = require("../../core/config");
+
+class PlayersEndpoint {
+    async call(req, res) {
+        try {
+            // Get all players in the guild from config
+            const guildTag = config.get("guild-tag");
+            const guildPlayers = await getPlayersByGuild(guildTag);
+            
+            // Batch fetch account links for all players at once
+            const playerUuids = guildPlayers.map(player => player.uuid);
+            const accountLinksMap = await getAccountLinksForPlayers(playerUuids);
+            
+            // Extract Discord IDs for batch rank fetching
+            const discordIds = Object.values(accountLinksMap).map(link => link.discord_id);
+            
+            // Batch fetch all Discord ranks at once
+            const rankMap = await rankService.getBatchMemberRanks(discordIds);
+
+            // Build response data
+            const playersWithData = [];
+            
+            for (const player of guildPlayers) {
+                try {
+                    const accountLink = accountLinksMap[player.uuid];
+                    let rankInfo = null;
+                    let discordId = null;
+
+                    if (accountLink) {
+                        discordId = accountLink.discord_id;
+                        const memberRank = rankMap.get(discordId);
+                        if (memberRank) {
+                            rankInfo = memberRank.identifier;
+                        }
+                    }
+
+                    // Get badges for this player
+                    const playerBadges = await badgesService.getPlayerBadges(player.uuid, {
+                        uuid: player.uuid,
+                        username: player.username,
+                        guild: player.guild,
+                        needs_aspects: player.needs_aspects
+                    });
+
+                    const playerData = {
+                        uuid: player.uuid,
+                        username: player.username,
+                        guild: player.guild,
+                        needs_aspects: player.needs_aspects,
+                        badges: playerBadges,
+                        has_discord_link: !!accountLink
+                    };
+
+                    // Only include rank and discord_id if player has linked account and has rank
+                    if (accountLink && rankInfo) {
+                        playerData.rank = rankInfo;
+                        playerData.discord_id = discordId;
+                    }
+
+                    playersWithData.push(playerData);
+                } catch (error) {
+                    console.error(`Error processing player ${player.username}:`, error);
+                    // Include player with minimal data if there's an error
+                    playersWithData.push({
+                        uuid: player.uuid,
+                        username: player.username,
+                        guild: player.guild,
+                        needs_aspects: player.needs_aspects,
+                        badges: [],
+                        has_discord_link: false
+                    });
+                }
+            }
+
+            res.status(200).json(playersWithData);
+        } catch (error) {
+            console.error("Error in players endpoint:", error);
+            res.status(500).json({ error: "Internal server error" });
+        }
+    }
+}
+
+module.exports = { PlayersEndpoint };

@@ -3,8 +3,8 @@ const path = require('path');
 
 class ConfigManager {
     constructor(configPath = '../config.json', templatePath = '../config.example.json') {
-        this.configPath = path.resolve(configPath);
-        this.templatePath = path.resolve(templatePath);
+        this.configPath = path.resolve(__dirname, '../../config.json');
+        this.templatePath = path.resolve(__dirname, '../../config.example.json');
         this.config = null;
 
         this.initialize();

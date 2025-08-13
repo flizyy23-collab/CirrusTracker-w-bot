@@ -1,7 +1,6 @@
 const express = require('express');
 const http = require('http');
-const axios = require('axios');
-const {databaseInit, insertRaid} = require("./core/database");
+const {databaseInit} = require("./core/database");
 const {AuthenticateEndpoint} = require("./features/auth/authenticate-endpoint");
 const {ReportRaidEndpoint} = require("./features/raids/report-raid-endpoint");
 const {IsAuthenticatedEndpoint} = require("./features/auth/is-authenticated-endpoint");
@@ -11,9 +10,10 @@ const {initQueue} = require("./features/player/player-queue");
 const {ToggleAspectsEndpoint} = require("./features/aspects/toggle-aspects-endpoint");
 const {VerifyLinkEndpoint} = require("./features/account-linking/verify-link-endpoint");
 const {UnlinkMinecraftEndpoint} = require("./features/account-linking/unlink-minecraft-endpoint");
-const {RankEndpoint} = require("./features/ranks/rank-endpoint");
+const {PlayersEndpoint} = require("./features/player/players-endpoint");
+const { badgesService } = require("./features/badges/badges-service");
 const { config } = require("./core/config");
-const {websocketInit, wsManager} = require("./features/websocket/websocket");
+const {websocketInit} = require("./features/websocket/websocket");
 
 const app = express();
 const server = http.createServer(app);
@@ -24,9 +24,15 @@ server.listen(PORT, '0.0.0.0', async (error) => {
     else console.log("Error occurred, server can't start", error);
 
     await databaseInit();
-    await registerEndpoints(app);
+    registerEndpoints(app);
     await initQueue();
     websocketInit(server);
+    
+    badgesService.initialize().then(() => {
+        console.log('Badge system ready');
+    }).catch(error => {
+        console.error('Badge system failed to initialize:', error);
+    });
 });
 
 const endpoints = {
@@ -37,7 +43,7 @@ const endpoints = {
     'toggle-aspects': new ToggleAspectsEndpoint(),
     'verify-link': new VerifyLinkEndpoint(),
     'unlink-minecraft': new UnlinkMinecraftEndpoint(),
-    'players': new RankEndpoint()
+    'players': new PlayersEndpoint(),
 };
 
 function registerEndpoints(app) {

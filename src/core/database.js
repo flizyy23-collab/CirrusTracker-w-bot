@@ -427,6 +427,24 @@ async function getPlayers() {
     return [];
 }
 
+async function getPlayersByGuild(guildTag) {
+    try {
+        const connection = await pool.getConnection();
+
+        const query = `
+            SELECT * FROM players WHERE guild = ?;
+        `;
+
+        const [rows] = await connection.execute(query, [guildTag]);
+        connection.release();
+        return rows;
+    } catch (err) {
+        console.error("Error getting players by guild: ", err);
+    }
+
+    return [];
+}
+
 async function toggleNeedsAspects(uuid) {
     try {
         const connection = await pool.getConnection();
@@ -662,6 +680,40 @@ async function getPlayersWithVerifiedLinks() {
     }
 }
 
+async function getAccountLinksForPlayers(playerUuids) {
+    try {
+        if (playerUuids.length === 0) return {};
+        
+        const connection = await pool.getConnection();
+        
+        // Create placeholders for IN clause
+        const placeholders = playerUuids.map(() => '?').join(',');
+        
+        const query = `
+            SELECT minecraft_uuid, discord_id, minecraft_username
+            FROM account_links 
+            WHERE minecraft_uuid IN (${placeholders}) AND verified = TRUE;
+        `;
+        
+        const [rows] = await connection.execute(query, playerUuids);
+        connection.release();
+        
+        // Convert to map for quick lookup
+        const linkMap = {};
+        for (const row of rows) {
+            linkMap[row.minecraft_uuid] = {
+                discord_id: row.discord_id,
+                minecraft_username: row.minecraft_username
+            };
+        }
+        
+        return linkMap;
+    } catch (err) {
+        console.error("Error getting account links for players: ", err);
+        return {};
+    }
+}
+
 module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
-    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getGuild, toggleNeedsAspects,
-    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks };
+    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getPlayersByGuild, getGuild, toggleNeedsAspects,
+    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks, getAccountLinksForPlayers };

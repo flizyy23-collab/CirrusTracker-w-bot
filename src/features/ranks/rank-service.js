@@ -11,6 +11,12 @@ class RankService {
         this.retryQueue = new Map(); // requestId -> retry promotion data
         this.maxRetries = 10; // Maximum retry attempts
         this.retryInterval = 60000; // 1 minute between retries
+        
+        // Member cache for performance
+        this.memberCache = new Map(); // discordId -> member data
+        this.cacheExpiry = null;
+        this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
+        
         this.startRetryTimer();
     }
 
@@ -72,6 +78,52 @@ class RankService {
     }
 
     /**
+     * Simple cache refresh using Discord.js guild cache (no API calls)
+     */
+    async refreshMemberCache() {
+        if (!this.discordClient) return;
+
+        try {
+            const guild = this.discordClient.guilds.cache.first();
+            if (!guild) {
+                console.error('No guilds found in Discord client cache for refreshMemberCache');
+                return;
+            }
+
+            console.log('Refreshing Discord member cache from guild cache...');
+            
+            // Use already cached guild members (no API call needed)
+            this.memberCache.clear();
+            const cachedMembers = guild.members.cache;
+            
+            for (const [discordId, member] of cachedMembers) {
+                this.memberCache.set(discordId, {
+                    id: member.id,
+                    roles: Array.from(member.roles.cache.keys()),
+                    displayName: member.displayName,
+                    username: member.user.username
+                });
+            }
+            
+            // Set expiry
+            this.cacheExpiry = Date.now() + this.cacheTimeout;
+            console.log(`Cached ${this.memberCache.size} Discord members from guild cache`);
+            
+        } catch (error) {
+            console.error('Error refreshing member cache:', error);
+            // Set short expiry to retry soon
+            this.cacheExpiry = Date.now() + 60000; // 1 minute
+        }
+    }
+
+    /**
+     * Check if cache is valid
+     */
+    isCacheValid() {
+        return this.cacheExpiry && Date.now() < this.cacheExpiry;
+    }
+
+    /**
      * Get a Discord member's current rank
      * @param {string} discordId - Discord user ID
      * @returns {Object|null} Current rank config or null
@@ -80,33 +132,168 @@ class RankService {
         if (!this.discordClient) return null;
 
         try {
-            // Get the guild from the client
-            const guild = this.discordClient.guilds.cache.first();
-            if (!guild) {
-                console.error('No guilds found in Discord client cache for getMemberRank');
-                return null;
+            // Check if we need to refresh cache
+            if (!this.isCacheValid()) {
+                await this.refreshMemberCache();
             }
 
-            const member = await guild.members.fetch(discordId);
-            if (!member) return null;
+            // Get member from cache
+            const cachedMember = this.memberCache.get(discordId);
+            if (!cachedMember) {
+                // Member not found in cache, try individual fetch as fallback
+                const guild = this.discordClient.guilds.cache.first();
+                if (!guild) return null;
 
-            // Find the highest rank role they have
-            let highestRank = null;
-            let highestIngameRank = 0;
+                try {
+                    const member = await guild.members.fetch(discordId);
+                    if (!member) return null;
 
-            for (const role of member.roles.cache.values()) {
-                const rankConfig = this.getRankByRoleId(role.id);
-                if (rankConfig && rankConfig['ingame-rank'] > highestIngameRank) {
-                    highestRank = rankConfig;
-                    highestIngameRank = rankConfig['ingame-rank'];
+                    // Cache this member for future use
+                    this.memberCache.set(discordId, {
+                        id: member.id,
+                        roles: Array.from(member.roles.cache.keys()),
+                        displayName: member.displayName,
+                        username: member.user.username
+                    });
+
+                    return this.calculateMemberRank(Array.from(member.roles.cache.keys()));
+                } catch (fetchError) {
+                    console.error(`Failed to fetch member ${discordId}:`, fetchError);
+                    return null;
                 }
             }
 
-            return highestRank;
+            // Calculate rank from cached member data
+            return this.calculateMemberRank(cachedMember.roles);
         } catch (error) {
             console.error('Error getting member rank:', error);
             return null;
         }
+    }
+
+    /**
+     * Calculate member rank from role IDs
+     * @param {Array} roleIds - Array of role IDs
+     * @returns {Object|null} Highest rank config or null
+     */
+    calculateMemberRank(roleIds) {
+        let highestRank = null;
+        let highestIngameRank = 0;
+
+        for (const roleId of roleIds) {
+            const rankConfig = this.getRankByRoleId(roleId);
+            if (rankConfig && rankConfig['ingame-rank'] > highestIngameRank) {
+                highestRank = rankConfig;
+                highestIngameRank = rankConfig['ingame-rank'];
+            }
+        }
+
+        return highestRank;
+    }
+
+    /**
+     * Get ranks for multiple Discord IDs efficiently (batch operation)
+     * @param {Array} discordIds - Array of Discord user IDs
+     * @returns {Map} Map of discordId -> rank data
+     */
+    async getBatchMemberRanks(discordIds) {
+        const rankMap = new Map();
+        
+        if (!this.discordClient || discordIds.length === 0) {
+            return rankMap;
+        }
+
+        try {
+            // Ensure cache is fresh (this is now fast - no API calls)
+            if (!this.isCacheValid()) {
+                await this.refreshMemberCache();
+            }
+
+            // Process all Discord IDs from cache
+            for (const discordId of discordIds) {
+                const cachedMember = this.memberCache.get(discordId);
+                if (cachedMember) {
+                    const rank = this.calculateMemberRank(cachedMember.roles);
+                    if (rank) {
+                        rankMap.set(discordId, rank);
+                    }
+                } else {
+                    // Try individual fetch for missing member (but with quick timeout)
+                    try {
+                        const member = await Promise.race([
+                            this.discordClient.guilds.cache.first().members.fetch(discordId),
+                            new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Quick fetch timeout')), 1000)
+                            )
+                        ]);
+
+                        if (member) {
+                            // Cache this member
+                            this.memberCache.set(discordId, {
+                                id: member.id,
+                                roles: Array.from(member.roles.cache.keys()),
+                                displayName: member.displayName,
+                                username: member.user.username
+                            });
+
+                            // Calculate rank
+                            const rank = this.calculateMemberRank(Array.from(member.roles.cache.keys()));
+                            if (rank) {
+                                rankMap.set(discordId, rank);
+                            }
+                        }
+                    } catch (fetchError) {
+                        // Silently skip missing members
+                        console.warn(`Could not fetch member ${discordId}:`, fetchError.message);
+                    }
+                }
+            }
+
+            return rankMap;
+        } catch (error) {
+            console.error('Error getting batch member ranks:', error);
+            return rankMap;
+        }
+    }
+
+    /**
+     * Fetch missing members individually
+     */
+    async fetchMissingMembers(discordIds, rankMap) {
+        const guild = this.discordClient.guilds.cache.first();
+        if (!guild) return;
+
+        const fetchPromises = discordIds.map(async (discordId) => {
+            try {
+                const member = await Promise.race([
+                    guild.members.fetch(discordId),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Individual fetch timeout')), 3000)
+                    )
+                ]);
+
+                if (member) {
+                    // Cache this member
+                    this.memberCache.set(discordId, {
+                        id: member.id,
+                        roles: Array.from(member.roles.cache.keys()),
+                        displayName: member.displayName,
+                        username: member.user.username
+                    });
+
+                    // Calculate rank
+                    const rank = this.calculateMemberRank(Array.from(member.roles.cache.keys()));
+                    if (rank) {
+                        rankMap.set(discordId, rank);
+                    }
+                }
+            } catch (fetchError) {
+                console.warn(`Failed to fetch member ${discordId}:`, fetchError.message);
+            }
+        });
+
+        // Wait for all individual fetches (but don't fail if some timeout)
+        await Promise.allSettled(fetchPromises);
     }
 
     /**
@@ -642,27 +829,14 @@ class RankService {
     }
 
     /**
-     * Get queue status (updated to include retry queue)
+     * Get queue status
      * @returns {Object} Queue information
      */
     getQueueStatus() {
         return {
             queuedPromotions: this.promotionQueue.size,
             pendingPromotions: this.pendingPromotions.size,
-            retryPromotions: this.retryQueue.size,
-            queue: Array.from(this.promotionQueue.values()).map(p => ({
-                targetUsername: p.targetUsername,
-                newRank: p.newRank,
-                queuedAt: p.queuedAt,
-                requestId: p.requestId
-            })),
-            retryQueue: Array.from(this.retryQueue.values()).map(r => ({
-                targetUsername: r.targetUsername,
-                newRank: r.newRank,
-                attempts: r.attempts,
-                nextRetry: new Date(r.nextRetry),
-                requestId: r.requestId
-            }))
+            retryPromotions: this.retryQueue.size
         };
     }
 }
