@@ -48,7 +48,9 @@ async function createTables() {
                 uuid VARCHAR(36) NOT NULL PRIMARY KEY,
                 username VARCHAR(16) NOT NULL,
                 guild VARCHAR(4) DEFAULT NULL,
-                needs_aspects BOOLEAN DEFAULT 1 NOT NULL
+                needs_aspects BOOLEAN DEFAULT 1 NOT NULL,
+                discord_id VARCHAR(20) DEFAULT NULL,
+                INDEX idx_discord_id (discord_id)
             );
         `;
 
@@ -85,6 +87,35 @@ async function createTables() {
         `;
 
         await connection.execute(createAccountLinksTableQuery);
+
+        // Add discord_id column to players table if it doesn't exist
+        try {
+            await connection.execute(`
+                ALTER TABLE players 
+                ADD COLUMN IF NOT EXISTS discord_id VARCHAR(20) DEFAULT NULL,
+                ADD INDEX IF NOT EXISTS idx_discord_id (discord_id);
+            `);
+        } catch (alterErr) {
+            // Ignore errors if column already exists
+            console.log("Discord_id column may already exist, continuing...");
+        }
+
+        // Migrate existing verified links to players table
+        try {
+            const migrationQuery = `
+                UPDATE players p
+                INNER JOIN account_links al ON p.uuid = al.minecraft_uuid
+                SET p.discord_id = al.discord_id
+                WHERE al.verified = TRUE AND p.discord_id IS NULL;
+            `;
+            
+            const [migrationResult] = await connection.execute(migrationQuery);
+            if (migrationResult.affectedRows > 0) {
+                console.log(`Migrated ${migrationResult.affectedRows} verified account links to players table`);
+            }
+        } catch (migrationErr) {
+            console.log("Migration may have already been completed or no verified links exist");
+        }
 
         connection.release();
     } catch (err) {
@@ -550,6 +581,18 @@ async function verifyAccountLink(verificationCode) {
         `;
         
         await connection.execute(updateQuery, [link.id]);
+        
+        // Add or update the player with discord_id
+        await insertPlayer(link.minecraft_uuid, link.minecraft_username);
+        
+        const updatePlayerQuery = `
+            UPDATE players 
+            SET discord_id = ? 
+            WHERE uuid = ?;
+        `;
+        
+        await connection.execute(updatePlayerQuery, [link.discord_id, link.minecraft_uuid]);
+        
         connection.release();
         
         return {
@@ -568,14 +611,25 @@ async function getAccountLink(discordId) {
         const connection = await pool.getConnection();
         
         const selectQuery = `
-            SELECT * FROM account_links 
-            WHERE discord_id = ? AND verified = TRUE;
+            SELECT p.uuid, p.username, p.guild, p.needs_aspects, p.discord_id, al.verified_at
+            FROM players p
+            LEFT JOIN account_links al ON p.uuid = al.minecraft_uuid AND al.verified = TRUE
+            WHERE p.discord_id = ?;
         `;
         
         const [rows] = await connection.execute(selectQuery, [discordId]);
         connection.release();
         
-        return rows[0] || null;
+        if (rows.length === 0) return null;
+        
+        const player = rows[0];
+        return {
+            discord_id: player.discord_id,
+            minecraft_uuid: player.uuid,
+            minecraft_username: player.username,
+            verified: true,
+            verified_at: player.verified_at
+        };
     } catch (err) {
         console.error("Error getting account link: ", err);
         return null;
@@ -587,14 +641,23 @@ async function getAccountLinkByMinecraft(minecraftUuid) {
         const connection = await pool.getConnection();
         
         const selectQuery = `
-            SELECT * FROM account_links 
-            WHERE minecraft_uuid = ? AND verified = TRUE;
+            SELECT p.uuid, p.username, p.guild, p.needs_aspects, p.discord_id
+            FROM players p
+            WHERE p.uuid = ? AND p.discord_id IS NOT NULL;
         `;
         
         const [rows] = await connection.execute(selectQuery, [minecraftUuid]);
         connection.release();
         
-        return rows[0] || null;
+        if (rows.length === 0) return null;
+        
+        const player = rows[0];
+        return {
+            discord_id: player.discord_id,
+            minecraft_uuid: player.uuid,
+            minecraft_username: player.username,
+            verified: true
+        };
     } catch (err) {
         console.error("Error getting account link by minecraft: ", err);
         return null;
@@ -605,11 +668,21 @@ async function removeAccountLink(discordId) {
     try {
         const connection = await pool.getConnection();
         
+        // Remove from account_links table
         const deleteQuery = `
             DELETE FROM account_links WHERE discord_id = ?;
         `;
         
-        const [result] = await connection.execute(deleteQuery, [discordId]);
+        await connection.execute(deleteQuery, [discordId]);
+        
+        // Clear discord_id from players table
+        const updatePlayerQuery = `
+            UPDATE players 
+            SET discord_id = NULL 
+            WHERE discord_id = ?;
+        `;
+        
+        const [result] = await connection.execute(updatePlayerQuery, [discordId]);
         connection.release();
         
         return result.affectedRows > 0;
@@ -623,11 +696,21 @@ async function removeAccountLinkByMinecraft(minecraftUuid) {
     try {
         const connection = await pool.getConnection();
         
+        // Remove from account_links table
         const deleteQuery = `
             DELETE FROM account_links WHERE minecraft_uuid = ?;
         `;
         
-        const [result] = await connection.execute(deleteQuery, [minecraftUuid]);
+        await connection.execute(deleteQuery, [minecraftUuid]);
+        
+        // Clear discord_id from players table
+        const updatePlayerQuery = `
+            UPDATE players 
+            SET discord_id = NULL 
+            WHERE uuid = ?;
+        `;
+        
+        const [result] = await connection.execute(updatePlayerQuery, [minecraftUuid]);
         connection.release();
         
         return result.affectedRows > 0;
@@ -685,17 +768,19 @@ async function getPlayersWithVerifiedLinks() {
         const connection = await pool.getConnection();
         
         const query = `
-            SELECT p.uuid, p.username, p.guild, p.needs_aspects, 
-                   al.discord_id, al.minecraft_username
+            SELECT p.uuid, p.username, p.guild, p.needs_aspects, p.discord_id
             FROM players p
-            INNER JOIN account_links al ON p.uuid = al.minecraft_uuid
-            WHERE al.verified = TRUE;
+            WHERE p.discord_id IS NOT NULL;
         `;
         
         const [rows] = await connection.execute(query);
         connection.release();
         
-        return rows;
+        // Transform to match expected format
+        return rows.map(row => ({
+            ...row,
+            minecraft_username: row.username
+        }));
     } catch (err) {
         console.error("Error getting players with verified links: ", err);
         return [];
@@ -712,9 +797,9 @@ async function getAccountLinksForPlayers(playerUuids) {
         const placeholders = playerUuids.map(() => '?').join(',');
         
         const query = `
-            SELECT minecraft_uuid, discord_id, minecraft_username
-            FROM account_links 
-            WHERE minecraft_uuid IN (${placeholders}) AND verified = TRUE;
+            SELECT uuid, discord_id, username
+            FROM players 
+            WHERE uuid IN (${placeholders}) AND discord_id IS NOT NULL;
         `;
         
         const [rows] = await connection.execute(query, playerUuids);
@@ -723,9 +808,9 @@ async function getAccountLinksForPlayers(playerUuids) {
         // Convert to map for quick lookup
         const linkMap = {};
         for (const row of rows) {
-            linkMap[row.minecraft_uuid] = {
+            linkMap[row.uuid] = {
                 discord_id: row.discord_id,
-                minecraft_username: row.minecraft_username
+                minecraft_username: row.username
             };
         }
         
@@ -736,6 +821,25 @@ async function getAccountLinksForPlayers(playerUuids) {
     }
 }
 
+async function getPlayerByDiscordId(discordId) {
+    try {
+        const connection = await pool.getConnection();
+        
+        const query = `
+            SELECT * FROM players
+            WHERE discord_id = ?;
+        `;
+        
+        const [rows] = await connection.execute(query, [discordId]);
+        connection.release();
+        
+        return rows[0] || null;
+    } catch (err) {
+        console.error("Error getting player by discord ID: ", err);
+        return null;
+    }
+}
+
 module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
     getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, updateUsername, getPlayers, getPlayersByGuild, getGuild, toggleNeedsAspects,
-    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks, getAccountLinksForPlayers };
+    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks, getAccountLinksForPlayers, getPlayerByDiscordId };

@@ -1,5 +1,4 @@
 const request = require("request");
-const {insertPlayer} = require("./database");
 
 const raids = [
   { name: "All Raids", id: -1 },
@@ -44,7 +43,15 @@ function requestUUID(username) {
           );
           resolve(id);
 
-          insertPlayer(id, username).catch(err => console.error('Error inserting player:', err));
+          // Dynamically import to avoid circular dependency
+          setImmediate(async () => {
+            try {
+              const { insertPlayer } = require("./database");
+              await insertPlayer(id, username);
+            } catch (err) {
+              console.error('Error inserting player:', err);
+            }
+          });
         } else {
           resolve(null);
         }

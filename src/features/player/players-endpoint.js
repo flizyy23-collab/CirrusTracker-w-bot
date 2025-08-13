@@ -1,4 +1,4 @@
-const { getPlayersByGuild, getAccountLinksForPlayers } = require("../../core/database");
+const { getPlayersByGuild } = require("../../core/database");
 const { rankService } = require("../ranks/rank-service");
 const { badgesService } = require("../badges/badges-service");
 const { config } = require("../../core/config");
@@ -10,12 +10,10 @@ class PlayersEndpoint {
             const guildTag = config.get("guild-tag");
             const guildPlayers = await getPlayersByGuild(guildTag);
             
-            // Batch fetch account links for all players at once
-            const playerUuids = guildPlayers.map(player => player.uuid);
-            const accountLinksMap = await getAccountLinksForPlayers(playerUuids);
-            
-            // Extract Discord IDs for batch rank fetching
-            const discordIds = Object.values(accountLinksMap).map(link => link.discord_id);
+            // Extract Discord IDs from players data for batch rank fetching
+            const discordIds = guildPlayers
+                .filter(player => player.discord_id)
+                .map(player => player.discord_id);
             
             // Batch fetch all Discord ranks at once
             const rankMap = await rankService.getBatchMemberRanks(discordIds);
@@ -25,12 +23,10 @@ class PlayersEndpoint {
             
             for (const player of guildPlayers) {
                 try {
-                    const accountLink = accountLinksMap[player.uuid];
                     let rankInfo = null;
-                    let discordId = null;
+                    const discordId = player.discord_id;
 
-                    if (accountLink) {
-                        discordId = accountLink.discord_id;
+                    if (discordId) {
                         const memberRank = rankMap.get(discordId);
                         if (memberRank) {
                             rankInfo = memberRank.identifier;
@@ -51,11 +47,11 @@ class PlayersEndpoint {
                         guild: player.guild,
                         needs_aspects: player.needs_aspects,
                         badges: playerBadges,
-                        has_discord_link: !!accountLink
+                        has_discord_link: !!discordId
                     };
 
                     // Only include rank and discord_id if player has linked account and has rank
-                    if (accountLink && rankInfo) {
+                    if (discordId && rankInfo) {
                         playerData.rank = rankInfo;
                         playerData.discord_id = discordId;
                     }
