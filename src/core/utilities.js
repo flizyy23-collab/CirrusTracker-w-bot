@@ -59,4 +59,20 @@ function requestUUID(username) {
   });
 }
 
-module.exports = {sleep, requestUUID, raids, daysToTimestamp, getLastPoolReset};
+async function requestUsername(uuid) {
+  const cleanUUID = uuid.replace(/-/g, '');
+  const url = `https://sessionserver.mojang.com/session/minecraft/profile/${cleanUUID}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.name || null;
+  } catch (err) {
+    console.error('Error fetching username:', err);
+    return null;
+  }
+}
+
+
+module.exports = {sleep, requestUUID, requestUsername, raids, daysToTimestamp, getLastPoolReset};

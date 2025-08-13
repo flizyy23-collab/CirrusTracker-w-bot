@@ -1,4 +1,4 @@
-const {updateGuild, getPlayers} = require("../../core/database");
+const {updateGuild, getPlayers, updateUsername} = require("../../core/database");
 let playerQueue = [];
 let isProcessing = false;
 
@@ -8,10 +8,12 @@ function processQueue() {
     isProcessing = true;
     const uuid = playerQueue.shift();
 
-    updateGuild(uuid).finally(() => {
-        isProcessing = false;
-        playerQueue.push(uuid);
-    });
+    updateGuild(uuid)
+        .then(() => updateUsername(uuid))
+        .then(() => {
+            isProcessing = false;
+            playerQueue.push(uuid);
+        });
 }
 
 function addPlayerToQueue(uuid) {

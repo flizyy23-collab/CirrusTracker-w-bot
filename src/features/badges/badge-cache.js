@@ -16,7 +16,8 @@ class BadgeCacheService {
         console.log('Initializing badge cache service...');
         try {
             await this.updateCache();
-            
+
+
             // Set up periodic cache refresh (every 5 minutes)
             setInterval(() => this.updateCache(), 5 * 60 * 1000);
             

@@ -2,6 +2,7 @@ const mysql = require('mysql2/promise');
 const {getPlayerGuild} = require("../features/player/wynn-api");
 const { config } = require("./config");
 const {removeToken} = require("../features/auth/authentication");
+const {requestUsername} = require("./utilities");
 
 let pool;
 
@@ -223,7 +224,6 @@ async function updateGuild(uuid) {
 
     removeToken(uuid);
 
-
     try {
         const connection = await pool.getConnection();
 
@@ -234,6 +234,28 @@ async function updateGuild(uuid) {
         `;
 
         await connection.execute(updateQuery, [guild, uuid]);
+        connection.release();
+    } catch (err) {
+        console.error("Error updating guild: ", err);
+    }
+}
+
+async function updateUsername(uuid) {
+    let username = await requestUsername(uuid);
+
+    let previousUsername = await getPlayerUsername(uuid);
+    if (username === previousUsername) return;
+
+    try {
+        const connection = await pool.getConnection();
+
+        const updateQuery = `
+            UPDATE players
+            SET username = ?
+            WHERE uuid = ?;
+        `;
+
+        await connection.execute(updateQuery, [username, uuid]);
         connection.release();
     } catch (err) {
         console.error("Error updating guild: ", err);
@@ -715,5 +737,5 @@ async function getAccountLinksForPlayers(playerUuids) {
 }
 
 module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
-    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, getPlayers, getPlayersByGuild, getGuild, toggleNeedsAspects,
+    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, updateUsername, getPlayers, getPlayersByGuild, getGuild, toggleNeedsAspects,
     createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks, getAccountLinksForPlayers };
