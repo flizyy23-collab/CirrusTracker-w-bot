@@ -11,6 +11,7 @@ const PACKET_TYPES = {
     CHAT_MESSAGE_ACK: 'chat_message_ack',
     RANK_PROMOTION_REQUEST: 'rank_promotion_request',
     RANK_PROMOTION_RESPONSE: 'rank_promotion_response',
+    CHAT_ANNOUNCEMENT: 'chat_announcement',
     CONNECT: 'connect',
     DISCONNECT: 'disconnect',
     PONG: 'pong',
@@ -78,12 +79,25 @@ const rankPromotionResponseHandler = async (client, packet) => {
     };
 };
 
+const chatAnnouncementHandler = async (client, packet) => {
+    console.log(`Chat announcement received from Discord: Guild Alert: ${packet.data.guild_alert}, Message: ${packet.data.message}`);
+    
+    return {
+        type: 'chat_announcement_ack',
+        data: {
+            acknowledged: true,
+            timestamp: Date.now()
+        }
+    };
+};
+
 // Map of packet types to their handlers
 const PACKET_HANDLERS = {
     [PACKET_TYPES.PING]: pingHandler,
     [PACKET_TYPES.HEARTBEAT]: heartbeatHandler,
     [PACKET_TYPES.CHAT_MESSAGE]: chatMessageHandler,
     [PACKET_TYPES.RANK_PROMOTION_RESPONSE]: rankPromotionResponseHandler,
+    [PACKET_TYPES.CHAT_ANNOUNCEMENT]: chatAnnouncementHandler,
     [PACKET_TYPES.CONNECT]: connectHandler,
     [PACKET_TYPES.DISCONNECT]: disconnectHandler
 };
@@ -95,6 +109,7 @@ module.exports = {
     heartbeatHandler,
     chatMessageHandler,
     rankPromotionResponseHandler,
+    chatAnnouncementHandler,
     connectHandler,
     disconnectHandler
 };

@@ -20,30 +20,29 @@
     "webhook-url": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
     "channel-id": "YOUR_CHANNEL_ID"
   },
+  "alert-command": {
+    "required-role-id": "ROLE_ID_REQUIRED_FOR_ALERT_COMMAND"
+  },
   "ranks": {
     "recruit": {
       "discord-role-id": "RECRUIT_ROLE_ID",
       "identifier": "Recruit",
-      "ingame-rank": 1,
-      "color": [170, 170, 170]
+      "ingame-rank": 1
     },
     "member": {
       "discord-role-id": "MEMBER_ROLE_ID",
       "identifier": "Member",
-      "ingame-rank": 2,
-      "color": [85, 255, 85]
+      "ingame-rank": 2
     },
     "captain": {
       "discord-role-id": "CAPTAIN_ROLE_ID",
       "identifier": "Captain",
-      "ingame-rank": 4,
-      "color": [255, 170, 0]
+      "ingame-rank": 4
     },
     "chief": {
       "discord-role-id": "CHIEF_ROLE_ID",
       "identifier": "Chief",
-      "ingame-rank": 5,
-      "color": [255, 85, 85]
+      "ingame-rank": 5
     }
   }
 }
