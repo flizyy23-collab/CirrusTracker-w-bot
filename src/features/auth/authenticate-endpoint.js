@@ -38,7 +38,7 @@ class AuthenticateEndpoint {
                 getToken(uuid).authenticate();
                 console.log('Player authenticated: ' + username);
             } else {
-                console.error('Mojang request failed', response.error);
+                console.error('Mojang request failed', response.statusMessage);
 
                 if (!retry) {
                     setTimeout(async () => {
@@ -61,7 +61,7 @@ class AuthenticateEndpoint {
 
                     if (data && data.name) insertPlayer(uuid, data.name);
                 } else {
-                    console.error('Mojang sessionserver request failed', response.error);
+                    console.error('Mojang sessionserver request failed', response.statusMessage);
                     reject(null);
                 }
             });

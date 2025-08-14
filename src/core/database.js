@@ -1,5 +1,5 @@
 const mysql = require('mysql2/promise');
-const {getPlayerGuild} = require("../features/player/wynn-api");
+const {getPlayerGuildInfo} = require("../features/player/wynn-api");
 const { config } = require("./config");
 const {removeToken} = require("../features/auth/authentication");
 const {requestUsername} = require("./utilities");
@@ -48,6 +48,7 @@ async function createTables() {
                 uuid VARCHAR(36) NOT NULL PRIMARY KEY,
                 username VARCHAR(16) NOT NULL,
                 guild VARCHAR(4) DEFAULT NULL,
+                guild_rank INT DEFAULT NULL,
                 needs_aspects BOOLEAN DEFAULT 1 NOT NULL,
                 discord_id VARCHAR(20) DEFAULT NULL,
                 INDEX idx_discord_id (discord_id)
@@ -98,6 +99,17 @@ async function createTables() {
         } catch (alterErr) {
             // Ignore errors if column already exists
             console.log("Discord_id column may already exist, continuing...");
+        }
+
+        // Add guild_rank column to players table if it doesn't exist
+        try {
+            await connection.execute(`
+                ALTER TABLE players 
+                ADD COLUMN IF NOT EXISTS guild_rank INT DEFAULT NULL;
+            `);
+        } catch (alterErr) {
+            // Ignore errors if column already exists
+            console.log("Guild_rank column may already exist, continuing...");
         }
 
         // Migrate existing verified links to players table
@@ -210,18 +222,18 @@ async function getPlayerUsername(uuid) {
 }
 
 async function insertPlayer(uuid, username) {
-    let guild = await getPlayerGuild(uuid);
+    let { guild, guildRank } = await getPlayerGuildInfo(uuid);
 
     try {
         const connection = await pool.getConnection();
 
         const insertQuery = `
-            INSERT INTO players (uuid, username, guild, needs_aspects)
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE username = VALUES(username), guild = VALUES(guild);
+            INSERT INTO players (uuid, username, guild, guild_rank, needs_aspects)
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE username = VALUES(username), guild = VALUES(guild), guild_rank = VALUES(guild_rank);
         `;
 
-        await connection.execute(insertQuery, [uuid, username, guild, 1]);
+        await connection.execute(insertQuery, [uuid, username, guild, guildRank, 1]);
         connection.release();
     } catch (err) {
         console.error("Error inserting player: ", err);
@@ -248,10 +260,7 @@ async function getGuild(uuid) {
 }
 
 async function updateGuild(uuid) {
-    let guild = await getPlayerGuild(uuid);
-
-    let previousGuild = await getGuild(uuid);
-    if (guild === previousGuild) return;
+    let { guild, guildRank } = await getPlayerGuildInfo(uuid);
 
     removeToken(uuid);
 
@@ -260,11 +269,11 @@ async function updateGuild(uuid) {
 
         const updateQuery = `
             UPDATE players
-            SET guild = ?
+            SET guild = ?, guild_rank = ?
             WHERE uuid = ?;
         `;
 
-        await connection.execute(updateQuery, [guild, uuid]);
+        await connection.execute(updateQuery, [guild, guildRank, uuid]);
         connection.release();
     } catch (err) {
         console.error("Error updating guild: ", err);

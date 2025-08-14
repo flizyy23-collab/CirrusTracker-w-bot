@@ -56,7 +56,7 @@ function requestUUID(username) {
           resolve(null);
         }
       } else {
-        console.error('Mojang request failed', response.error);
+        console.error('Mojang request failed', response.statusMessage);
         reject(error);
       }
     });

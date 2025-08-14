@@ -28,9 +28,9 @@ class PlayersEndpoint {
 
                     if (discordId) {
                         const memberRank = rankMap.get(discordId);
-                        if (memberRank) {
-                            rankInfo = memberRank.identifier;
-                        }
+                        if (memberRank) rankInfo = memberRank.identifier;
+                    } else {
+                        rankInfo = this.getGuildRankString(player.guild_rank);
                     }
 
                     // Get badges for this player
@@ -45,29 +45,15 @@ class PlayersEndpoint {
                         uuid: player.uuid,
                         username: player.username,
                         guild: player.guild,
+                        rank: rankInfo,
                         needs_aspects: player.needs_aspects,
                         badges: playerBadges,
                         has_discord_link: !!discordId
                     };
 
-                    // Only include rank and discord_id if player has linked account and has rank
-                    if (discordId && rankInfo) {
-                        playerData.rank = rankInfo;
-                        playerData.discord_id = discordId;
-                    }
-
                     playersWithData.push(playerData);
                 } catch (error) {
                     console.error(`Error processing player ${player.username}:`, error);
-                    // Include player with minimal data if there's an error
-                    playersWithData.push({
-                        uuid: player.uuid,
-                        username: player.username,
-                        guild: player.guild,
-                        needs_aspects: player.needs_aspects,
-                        badges: [],
-                        has_discord_link: false
-                    });
                 }
             }
 
@@ -75,6 +61,18 @@ class PlayersEndpoint {
         } catch (error) {
             console.error("Error in players endpoint:", error);
             res.status(500).json({ error: "Internal server error" });
+        }
+    }
+
+     getGuildRankString(stars) {
+        switch (stars) {
+            case 0: return "Recruit";
+            case 1: return "Recruiter";
+            case 2: return "Captain";
+            case 3: return "Strategist";
+            case 4: return "Chief";
+            case 5: return "Owner";
+            default: return "Recruit";
         }
     }
 }

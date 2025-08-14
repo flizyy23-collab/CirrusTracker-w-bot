@@ -39,6 +39,26 @@ async function getPlayerGuild(uuid) {
     }
 }
 
+async function getPlayerGuildInfo(uuid) {
+    try {
+        let player = await getWynnUser(uuid);
+        if (!player.guild || player.guild === "NULL") return { guild: null, guildRank: null };
+        
+        const guildPrefix = player.guild.prefix;
+        let guildRank = null;
+        
+        // Only get guild rank if player is in the configured guild
+        if (guildPrefix === config.get("guild-tag")) {
+            guildRank = player.guild.rankStars ? player.guild.rankStars.length : 0;
+        }
+        
+        return { guild: guildPrefix, guildRank };
+    } catch (error) {
+        console.error('Error fetching player guild info:', error);
+        return { guild: null, guildRank: null };
+    }
+}
+
 async function isPlayerInGuild(uuid) {
     try {
         let player = await getWynnUser(uuid);
@@ -53,4 +73,4 @@ async function isPlayerInGuild(uuid) {
     }
 }
 
-module.exports = {getGuildRank, isPlayerInGuild, getPlayerGuild};
+module.exports = {getGuildRank, isPlayerInGuild, getPlayerGuild, getPlayerGuildInfo};
