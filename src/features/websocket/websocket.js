@@ -143,15 +143,22 @@ class WebSocketManager {
     }
 
     addUuidConnection(uuid, clientId) {
-        if (!this.uuidConnections.has(uuid)) this.uuidConnections.set(uuid, new Set());
-        this.uuidConnections.get(uuid).add(clientId);
-        console.log(`UUID ${uuid} now has ${this.uuidConnections.get(uuid).size} connection(s)`);
+        if (this.uuidConnections.has(uuid)) {
+            const existingClientId = this.uuidConnections.get(uuid);
+            const existingClient = this.connections.get(existingClientId);
+            if (existingClient) {
+                console.log(`Closing existing connection ${existingClientId} for UUID ${uuid} due to new connection`);
+                existingClient.ws.close(1000, 'New connection established');
+                this.connections.delete(existingClientId);
+            }
+        }
+        this.uuidConnections.set(uuid, clientId);
+        console.log(`UUID ${uuid} now has 1 connection (replaced any existing connections)`);
     }
 
     removeUuidConnection(uuid, clientId) {
-        if (this.uuidConnections.has(uuid)) {
-            this.uuidConnections.get(uuid).delete(clientId);
-            if (this.uuidConnections.get(uuid).size === 0) this.uuidConnections.delete(uuid);
+        if (this.uuidConnections.has(uuid) && this.uuidConnections.get(uuid) === clientId) {
+            this.uuidConnections.delete(uuid);
         }
     }
 
@@ -187,28 +194,26 @@ class WebSocketManager {
     }
 
     sendToUuid(uuid, type, data) {
-        const clientIds = this.uuidConnections.get(uuid);
-        if (clientIds) {
-            clientIds.forEach(clientId => {
-                const client = this.connections.get(clientId);
-                if (client && client.ws.readyState === WebSocket.OPEN) {
-                    this.sendMessage(client.ws, type, data);
-                }
-            });
+        const clientId = this.uuidConnections.get(uuid);
+        if (clientId) {
+            const client = this.connections.get(clientId);
+            if (client && client.ws.readyState === WebSocket.OPEN) {
+                this.sendMessage(client.ws, type, data);
+            }
         }
     }
 
     disconnectUuid(uuid) {
-       const clientIds = this.uuidConnections.get(uuid);
-       clientIds.forEach(clientId => {
-            const client = this.connections.get(clientId);
-            if (client) {
-                client.ws.close('Disconnected by server');
-                this.connections.delete(clientId);
-            }
-       });
-       this.uuidConnections.delete(uuid);
-       console.log(`Disconnected all clients for UUID: ${uuid}`);
+       const clientId = this.uuidConnections.get(uuid);
+       if (clientId) {
+           const client = this.connections.get(clientId);
+           if (client) {
+               client.ws.close('Disconnected by server');
+               this.connections.delete(clientId);
+           }
+           this.uuidConnections.delete(uuid);
+           console.log(`Disconnected client for UUID: ${uuid}`);
+       }
     }
 
     startHeartbeat() {
