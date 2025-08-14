@@ -1,6 +1,7 @@
 const { config } = require('../../core/config');
 const accountLinkingService = require('./account-linking-service');
 const roleManager = require('./role-manager');
+const { rankService } = require('../ranks/rank-service');
 const { getToken } = require('../auth/authentication');
 
 class VerifyLinkEndpoint {
@@ -40,6 +41,9 @@ class VerifyLinkEndpoint {
                 try {
                     await roleManager.addLinkedRole(result.link.discordId);
                     await roleManager.ensureUserHasRank(result.link.discordId);
+                    
+                    // Refresh the member cache immediately to include the newly linked user
+                    await rankService.refreshMemberCache();
                 } catch (roleError) {
                     console.error('Error assigning roles:', roleError);
                     // Don't fail the verification if role assignment fails

@@ -385,6 +385,21 @@ class RankService {
 
             await targetMember.roles.add(newRole);
 
+            // Update our cache directly with the known changes (immediate)
+            if (this.memberCache.has(discordId)) {
+                const cachedMember = this.memberCache.get(discordId);
+                // Update the roles array to include the new role and remove old rank roles
+                const allRankRoleIds = Object.values(this.ranks).map(rank => rank['discord-role-id']);
+                let updatedRoles = cachedMember.roles.filter(roleId => !allRankRoleIds.includes(roleId));
+                updatedRoles.push(newRankConfig['discord-role-id']);
+                
+                this.memberCache.set(discordId, {
+                    ...cachedMember,
+                    roles: updatedRoles
+                });
+                console.log(`Direct cache update: ${targetMember.displayName} roles updated to include ${newRankConfig.identifier}`);
+            }
+
             // Send in-game promotion packet
             // For in-game promotion, we'll find the highest eligible rank available
             const promotionResult = await this.requestIngamePromotion(
