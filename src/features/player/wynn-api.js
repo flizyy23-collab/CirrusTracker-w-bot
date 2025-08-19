@@ -3,13 +3,19 @@ const { config } = require("../../core/config");
 
 function getWynnUser(uuid) {
     return new Promise((resolve, reject) => {
-        const url = `https://api.wynncraft.com/v3/player/${uuid}`;
+        const options = {
+            url: `https://api.wynncraft.com/v3/player/${uuid}`,
+            headers: {
+                Authorization: `Bearer ${config.get("wynncraft-token")}`
+            }
+        };
 
-        request(url, function (error, response, body) {
+        request(options, function (error, response, body) {
             if (!error && response.statusCode === 200) {
                 resolve(JSON.parse(body));
             } else {
-                reject(new Error('WynnAPI request failed' + response.error));
+                const msg = error ? error.message : `Status ${response.statusCode}, Body: ${body}`;
+                reject(new Error('WynnAPI request failed: ' + msg));
             }
         });
     });

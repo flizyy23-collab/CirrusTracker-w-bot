@@ -328,6 +328,38 @@ async function getRaids(uuid, timestamp = null) {
     return [];
 }
 
+async function getRaidCount(raidId = null, timestamp = null) {
+    try {
+        const connection = await pool.getConnection();
+        
+        let query = `SELECT COUNT(*) as count FROM raids`;
+        const params = [];
+        const conditions = [];
+        
+        if (raidId !== null) {
+            conditions.push(`raid = ?`);
+            params.push(raidId);
+        }
+        
+        if (timestamp) {
+            conditions.push(`time > ?`);
+            params.push(timestamp);
+        }
+        
+        if (conditions.length > 0) {
+            query += ` WHERE ${conditions.join(' AND ')}`;
+        }
+        
+        const [rows] = await connection.execute(query, params);
+        
+        connection.release();
+        return rows[0].count;
+    } catch (err) {
+        console.error("Error getting raid count: ", err);
+        return 0;
+    }
+}
+
 async function getAspects(uuid) {
     try {
         const connection = await pool.getConnection();
@@ -850,5 +882,5 @@ async function getPlayerByDiscordId(discordId) {
 }
 
 module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
-    getPlayerUsername, insertPlayer, getRaids, getAspects, getOwedAspects, getLeaderboard, updateGuild, updateUsername, getPlayers, getPlayersByGuild, getGuild, toggleNeedsAspects,
+    getPlayerUsername, insertPlayer, getRaids, getRaidCount, getAspects, getOwedAspects, getLeaderboard, updateGuild, updateUsername, getPlayers, getPlayersByGuild, getGuild, toggleNeedsAspects,
     createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks, getAccountLinksForPlayers, getPlayerByDiscordId };

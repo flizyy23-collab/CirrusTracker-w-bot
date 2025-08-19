@@ -1,6 +1,7 @@
 const {getToken} = require("../auth/authentication");
 const {insertRaid, getPlayerUUID, insertPlayer} = require("../../core/database");
 const {requestUUID} = require("../../core/utilities");
+const {sendRaidEmbed} = require("./raid-message");
 
 class ReportRaidEndpoint {
     constructor() {
@@ -41,7 +42,7 @@ class ReportRaidEndpoint {
 
             await insertRaid(raid, players[0], players[1], players[2], players[3], reporter, seasonRating, guildXP);
             res.status(200).send("Raid reported");
-
+            await sendRaidEmbed(raid, player1, player2, player3, player4);
             setTimeout(() => {
                 this.recentRaids.delete(reportKey);
             }, 1000 * 60);

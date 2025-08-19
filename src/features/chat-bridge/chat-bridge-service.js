@@ -1,9 +1,10 @@
 const { DiscordWebhook } = require('../../core/discord-webhook');
+const { wsManager } = require('../websocket/websocket');
 const { config } = require('../../core/config');
 const accountLinkingService = require('../account-linking/account-linking-service');
 const { rankService } = require('../ranks/rank-service');
 const {requestUUID} = require("../../core/utilities");
-const { SocketMessageHandler } = require('../websocket/socket-message-handler');
+const {analyzeAndFormatItems} = require("./encoded-item");
 
 
 class ChatBridgeService {
@@ -59,7 +60,22 @@ class ChatBridgeService {
 
         console.log(`Processing Minecraft message: ${username}: ${message}: ${uuid}`);
         
-        const success = await this.discordWebhook.sendMinecraftSkinMessage(username, message, uuid);
+        let messageData = message;
+        let success = false;
+
+        if (message.includes('󰀀󰄀')) {
+            console.log(`Item hash detected in message from ${username}`);
+            
+            try {
+                messageData = await analyzeAndFormatItems(message);
+                console.log(`Successfully processed item analysis for ${username}`);
+            } catch (error) {
+                console.error(`Error processing item hash from ${username}:`, error.message);
+                console.log(`Falling back to original message for ${username}`);
+            }
+        }
+
+        success = await this.discordWebhook.sendMinecraftSkinMessage(username, messageData, uuid);
         
         if (success) {
             console.log(`Bridged message to Discord from ${username}`);
@@ -111,10 +127,22 @@ class ChatBridgeService {
 
         console.log(`Processing Discord message from ${author.username} (linked as ${minecraftUsername}${userRank ? ` - ${userRank.identifier}` : ''}): ${message}`);
 
-        const avatarUrl = `https://crafatar.com/avatars/${minecraftUuid}?size=64&default=MHF_Steve&overlay`;
+        const messageData = {
+            type: 'discord_chat_message',
+            data: {
+                username: minecraftUsername,
+                message: message,
+                timestamp: Date.now(),
+                uuid: minecraftUuid,
+                avatarUrl: `https://crafatar.com/avatars/${minecraftUuid}?size=64&default=MHF_Steve&overlay`,
+                rank: rank
+            }
+        };
 
-        SocketMessageHandler.sendDiscordMessageToClients(minecraftUsername, message, minecraftUuid, avatarUrl, rank);
+        wsManager.broadcast(messageData.type, messageData.data);
         console.log(`Bridged message to Minecraft clients from ${minecraftUsername} (Discord: ${author.username}${userRank ? ` - ${userRank.identifier}` : ''})`);
+
+        
     }
 
     startCleanup() {
