@@ -73,7 +73,15 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 client.on(Events.MessageCreate, async message => {
-    await chatBridge.handleDiscordMessage(message.author, message.content, message.channel.id);
+    let body = message.content
+    if (message.attachments.size > 0) {
+        const attachment = message.attachments.first();
+        console.log(`accept`);
+        if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+            body = `${attachment.url} ${message.content}`;
+        }
+    }
+    await chatBridge.handleDiscordMessage(message.author, body, message.channel.id);
 });
 
 module.exports = { client };
