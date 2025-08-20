@@ -3,6 +3,7 @@ const { getLeaderboard } = require("../../core/database");
 class BadgeCacheService {
     constructor() {
         this.playerBadgeCache = new Map(); // Stores player badges by UUID
+        this.leaderboardCache = new Map();
         this.isCalculating = false;
         this.isInitialized = false;
     }
@@ -39,12 +40,14 @@ class BadgeCacheService {
         try {
             console.log('Updating badge cache...');
             this.playerBadgeCache.clear();
+            this.leaderboardCache.clear();
             
             // Process each raid leaderboard
-            for (let raidId = 0; raidId <= 3; raidId++) {
+            for (let raidId = -1; raidId <= 3; raidId++) {
                 try {
                     const leaderboard = await getLeaderboard(raidId);
                     const leaderboardArray = Array.from(leaderboard.keys());
+                    this.leaderboardCache.set(raidId, leaderboardArray);
                     
                     // Top 3 for each raid
                     for (let position = 0; position < 3 && position < leaderboardArray.length; position++) {
@@ -72,6 +75,9 @@ class BadgeCacheService {
      */
     getRaidBadgeId(raidId, position) {
         const raidNames = ['NOTG', 'NOL', 'TCC', 'TNA'];
+        if (raidId === -1) {
+            return `ALL_TOP_${position}`;
+        }
         const raidName = raidNames[raidId] || 'UNKNOWN';
         return `${raidName}_TOP_${position}`;
     }
@@ -96,6 +102,12 @@ class BadgeCacheService {
         return this.playerBadgeCache.get(uuid) || [];
     }
 
+    /**
+     * Get cached leaderboard for a raid (instant response)
+     */
+    getCachedLeaderboard(raidId) {
+        return this.leaderboardCache.get(raidId) || [];
+    }
 }
 
 const badgeCacheService = new BadgeCacheService();

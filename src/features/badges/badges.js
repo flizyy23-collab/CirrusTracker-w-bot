@@ -10,6 +10,21 @@ function createRaidLeaderCondition(raid, position) {
 
 const badges = [
     {
+        id: 'ALL_TOP_1',
+        priority: 100,
+        condition: createRaidLeaderCondition(-1, 0)
+    },
+    {
+        id: 'ALL_TOP_2',
+        priority: 100,
+        condition: createRaidLeaderCondition(-1, 1)
+    },
+    {
+        id: 'ALL_TOP_3',
+        priority: 100,
+        condition: createRaidLeaderCondition(-1, 2)
+    },
+    {
         id: 'NOTG_TOP_1',
         priority: 100,
         condition: createRaidLeaderCondition(0, 0)
