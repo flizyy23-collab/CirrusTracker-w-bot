@@ -261,8 +261,12 @@ async function getGuild(uuid) {
 
 async function updateGuild(uuid) {
     let { guild, guildRank } = await getPlayerGuildInfo(uuid);
+    
+    const guildTag = config.get("guild-tag")
 
-    removeToken(uuid);
+    if (!guild || guild !== guildTag) {
+        removeToken(uuid);
+    }
 
     try {
         const connection = await pool.getConnection();

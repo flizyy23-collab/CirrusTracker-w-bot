@@ -1,5 +1,5 @@
 const {getGuildRank, isPlayerInGuild} = require('../player/wynn-api')
-const {generateToken, getToken} = require("./authentication");
+const {generateTokenWithServerId, getToken, removeToken, authenticateServerId} = require("./authentication");
 const {sleep} = require("../../core/utilities");
 const request = require('request');
 const {getPlayerUsername, insertPlayer} = require("../../core/database");
@@ -11,66 +11,145 @@ class AuthenticateEndpoint {
         if (!req.query.uuid) return res.status(400).send("Missing parameters");
         let {uuid} = req.query;
 
-        if (!await isPlayerInGuild(uuid)) return res.status(400).send("Player is not in the guild");
+        try {
+            if (!await isPlayerInGuild(uuid)) {
+                return res.status(403).send("Player is not in the guild");
+            }
 
-        let token = generateToken(uuid);
-        res.status(200).send(token);
-
-        await sleep(2000);
-        await this.checkForAuthentication(uuid, token);
-    }
-
-    async checkForAuthentication(uuid, serverId, retry) {
-        let username = retry ? await this.getUsername(uuid) : await getPlayerUsername(uuid);
-        if (!retry && !username) {
-            await this.checkForAuthentication(uuid, serverId, true);
-            return;
-        }
-
-        console.log('Checking for authentication: ' + username + ' ' + serverId);
-
-        const url = `https://sessionserver.mojang.com/session/minecraft/hasJoined?username=${username}&serverId=${serverId}`;
-        request(url, (error, response, body) => {
-            if (!error && response.statusCode === 200) {
-                let stars = getGuildRank(uuid);
-                if (stars < getMinimumRank()) return;
-
-                getToken(uuid).authenticate();
-                console.log('Player authenticated: ' + username);
-            } else {
-                console.error('Mojang request failed', response.statusMessage);
-
-                if (!retry) {
-                    setTimeout(async () => {
-                        await this.checkForAuthentication(uuid, serverId, true);
-
-                    }, 5000);
+            const existingToken = getToken(uuid);
+            if (existingToken) {
+                const age = existingToken.getAge();
+                if (age > 60 * 60 * 1000 || !existingToken.isAuthenticated()) {
+                    removeToken(uuid);
+                } else {
+                    return res.status(200).send(existingToken.serverId || 'existing-session');
                 }
             }
-        });
+
+            const tokens = generateTokenWithServerId(uuid);
+            res.status(200).send(tokens.serverId);
+
+            await sleep(2000);
+            await this.checkForAuthentication(uuid, tokens.serverId);
+            
+        } catch (error) {
+            console.error(`Authentication endpoint error for UUID ${uuid}:`, error);
+            res.status(500).send("Internal server error");
+        }
     }
 
-    getUsername(uuid) {
-        const url = `https://sessionserver.mojang.com/session/minecraft/profile/${uuid}`;
-        return new Promise((resolve, reject) => {
-            request(url, function (error, response, body) {
+    async checkForAuthentication(uuid, serverId, retry = false, attempt = 1) {
+        const MAX_ATTEMPTS = 3;
+        const RETRY_DELAY = 5000;
+
+        try {
+            let username = retry ? await this.getUsername(uuid) : await getPlayerUsername(uuid);
+            
+            if (!retry && !username) {
+                await this.checkForAuthentication(uuid, serverId, true, attempt);
+                return;
+            }
+
+            if (!username) {
+                return;
+            }
+
+            const url = `https://sessionserver.mojang.com/session/minecraft/hasJoined?username=${username}&serverId=${serverId}`;
+            
+            request({
+                url: url,
+                timeout: 10000
+            }, async (error, response, body) => {
+                try {
+                    if (!error && response.statusCode === 200) {
+                        let authData;
+                        try {
+                            authData = JSON.parse(body);
+                        } catch (parseError) {
+                            this.retryAuthentication(uuid, serverId, retry, attempt);
+                            return;
+                        }
+
+                        if (!authData.id || !authData.name) {
+                            this.retryAuthentication(uuid, serverId, retry, attempt);
+                            return;
+                        }
+
+                        const responseUuid = authData.id.replace(/-/g, '').toLowerCase();
+                        const expectedUuid = uuid.replace(/-/g, '').toLowerCase();
+                        
+                        if (responseUuid !== expectedUuid) {
+                            this.retryAuthentication(uuid, serverId, retry, attempt);
+                            return;
+                        }
+
+                        if (authenticateServerId(serverId)) {
+                            try {
+                                const { wsManager } = require('../websocket/websocket');
+                                wsManager.sendToUuid(uuid, 'authentication_success', {
+                                    message: 'Authentication completed successfully',
+                                    username: authData.name,
+                                    timestamp: new Date().toISOString()
+                                });
+                            } catch (wsError) {
+                                // WebSocket manager not available
+                            }
+                        }
+                    } else {
+                        this.retryAuthentication(uuid, serverId, retry, attempt);
+                    }
+                } catch (processError) {
+                    this.retryAuthentication(uuid, serverId, retry, attempt);
+                }
+            });
+            
+        } catch (error) {
+            if (attempt >= MAX_ATTEMPTS) {
+                removeToken(uuid);
+            }
+        }
+    }
+
+    retryAuthentication(uuid, serverId, retry, attempt) {
+        const MAX_ATTEMPTS = 3;
+        const RETRY_DELAY = 5000;
+
+        if (attempt < MAX_ATTEMPTS) {
+            setTimeout(async () => {
+                await this.checkForAuthentication(uuid, serverId, retry, attempt + 1);
+            }, RETRY_DELAY);
+        } else {
+            removeToken(uuid);
+        }
+    }
+
+    async getUsername(uuid) {
+        return new Promise((resolve) => {
+            const url = `https://sessionserver.mojang.com/session/minecraft/profile/${uuid}`;
+            
+            request({
+                url: url,
+                timeout: 10000
+            }, function (error, response, body) {
                 if (!error && response.statusCode === 200) {
-                    let data = JSON.parse(body);
-
-                    resolve(data.name);
-
-                    if (data && data.name) insertPlayer(uuid, data.name);
+                    try {
+                        let data = JSON.parse(body);
+                        
+                        if (data && data.name) {
+                            insertPlayer(uuid, data.name).catch(() => {});
+                            resolve(data.name);
+                        } else {
+                            resolve(null);
+                        }
+                    } catch (parseError) {
+                        resolve(null);
+                    }
                 } else {
-                    console.error('Mojang sessionserver request failed', response.statusMessage);
-                    reject(null);
+                    resolve(null);
                 }
             });
         });
     }
-}
-
-function getMinimumRank() {
-    return config.get("minimum-rank");
 }
 
 module.exports = { AuthenticateEndpoint }

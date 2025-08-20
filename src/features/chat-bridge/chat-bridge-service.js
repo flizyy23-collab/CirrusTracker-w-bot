@@ -141,7 +141,6 @@ class ChatBridgeService {
 
         wsManager.broadcast(messageData.type, messageData.data);
         console.log(`Bridged message to Minecraft clients from ${minecraftUsername} (Discord: ${author.username}${userRank ? ` - ${userRank.identifier}` : ''})`);
-
         
     }
 

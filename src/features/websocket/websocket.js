@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const crypto = require('crypto');
 const { PacketHandler } = require('./packet-handler');
-const { findUuidByToken } = require('../auth/authentication');
+const { findUuidByToken, validateToken } = require('../auth/authentication');
 
 class WebSocketManager {
     constructor() {
@@ -9,6 +9,8 @@ class WebSocketManager {
         this.uuidConnections = new Map();
         this.packetHandler = new PacketHandler();
         this.wss = null;
+        this.heartbeatInterval = 30000; // 30 seconds
+        this.heartbeatTimeout = 10000; // 10 seconds
     }
 
     init(server) {
@@ -32,12 +34,14 @@ class WebSocketManager {
         let uuid = null;
 
         if (token) {
-            uuid = findUuidByToken(token);
-            if (uuid) {
+            // Validate token more thoroughly
+            const tokenValidation = validateToken(token);
+            if (tokenValidation.valid) {
+                uuid = tokenValidation.uuid;
                 console.log(`Authenticated connection for UUID: ${uuid}`);
             } else {
-                console.warn(`Invalid token provided: ${token}`);
-                ws.close(1008, 'Invalid authentication token');
+                console.warn(`Invalid token provided: ${token} - ${tokenValidation.reason}`);
+                ws.close(1008, `Invalid authentication token: ${tokenValidation.reason}`);
                 return;
             }
         } else {
@@ -53,7 +57,9 @@ class WebSocketManager {
             userAgent: req.headers['user-agent'],
             connectedAt: new Date(),
             uuid: uuid,
-            token: token
+            token: token,
+            lastHeartbeat: Date.now(),
+            heartbeatTimer: null
         };
 
         this.connections.set(clientId, clientInfo);
@@ -61,6 +67,9 @@ class WebSocketManager {
         if (uuid) this.addUuidConnection(uuid, clientId);
         
         console.log(`Client connected: ${clientId} UUID: ${uuid || 'unauthenticated'} from ${clientInfo.ip}`);
+
+        // Start heartbeat monitoring for this client
+        this.startClientHeartbeat(clientId);
 
         // Process any queued promotions for this client
         if (uuid) {
@@ -70,7 +79,6 @@ class WebSocketManager {
             }, 1000); // Small delay to ensure client is fully connected
         }
 
-        //TODO: Change this
         this.sendMessage(ws, 'connection', {
             type: 'authenticated',
             clientId: clientId,
@@ -94,8 +102,43 @@ class WebSocketManager {
             const client = this.connections.get(clientId);
             if (client) {
                 client.lastPong = Date.now();
+                client.lastHeartbeat = Date.now();
             }
         });
+    }
+
+    startClientHeartbeat(clientId) {
+        const client = this.connections.get(clientId);
+        if (!client) return;
+
+        // Clear any existing timer
+        if (client.heartbeatTimer) {
+            clearInterval(client.heartbeatTimer);
+        }
+
+        // Set up heartbeat monitoring
+        client.heartbeatTimer = setInterval(() => {
+            const currentClient = this.connections.get(clientId);
+            if (!currentClient) {
+                clearInterval(client.heartbeatTimer);
+                return;
+            }
+
+            const now = Date.now();
+            const timeSinceLastHeartbeat = now - currentClient.lastHeartbeat;
+
+            // Check if client has been unresponsive
+            if (timeSinceLastHeartbeat > this.heartbeatTimeout + this.heartbeatInterval) {
+                console.log(`Client ${clientId} (${currentClient.uuid}) heartbeat timeout, disconnecting`);
+                this.disconnectClient(clientId, 'Heartbeat timeout');
+                return;
+            }
+
+            // Send ping
+            if (currentClient.ws.readyState === WebSocket.OPEN) {
+                currentClient.ws.ping();
+            }
+        }, this.heartbeatInterval);
     }
 
     async handleMessage(clientId, data) {
@@ -107,6 +150,21 @@ class WebSocketManager {
                 console.warn(`Packet from unknown client: ${clientId}`);
                 return;
             }
+
+            // Update heartbeat timestamp for any message
+            client.lastHeartbeat = Date.now();
+
+            // Handle heartbeat packets
+            if (packet.type === 'heartbeat') {
+                this.sendMessage(client.ws, 'heartbeat_response', {
+                    timestamp: Date.now(),
+                    clientTimestamp: packet.timestamp
+                });
+                return;
+            }
+
+            // Don't validate tokens on every message - trust the authenticated connection
+            // Token validation was causing disconnections during normal operation
 
             console.log(`Packet from ${clientId} (${client.uuid || 'unauthenticated'}):`, packet);
             const response = await this.packetHandler.handlePacket(client, packet);
@@ -121,10 +179,28 @@ class WebSocketManager {
         }
     }
 
+    validateClientToken(client) {
+        if (!client.token || !client.uuid) return false;
+
+        try {
+            const validation = validateToken(client.token);
+            return validation.valid && validation.uuid === client.uuid;
+        } catch (error) {
+            console.error(`Error validating token for client ${client.id}:`, error);
+            return false;
+        }
+    }
+
     handleDisconnect(clientId, code, reason) {
         const client = this.connections.get(clientId);
         if (client) {
             console.log(`Client disconnected: ${clientId} UUID: ${client.uuid || 'unauthenticated'} (${code}: ${reason})`);
+            
+            // Clear heartbeat timer
+            if (client.heartbeatTimer) {
+                clearInterval(client.heartbeatTimer);
+            }
+            
             if (client.uuid) this.removeUuidConnection(client.uuid, clientId);
             
             this.connections.delete(clientId);
@@ -135,9 +211,26 @@ class WebSocketManager {
         console.error(`WebSocket error for client ${clientId}:`, error);
         const client = this.connections.get(clientId);
         if (client) {
+            if (client.heartbeatTimer) {
+                clearInterval(client.heartbeatTimer);
+            }
+            
             if (client.uuid) this.removeUuidConnection(client.uuid, clientId);
             
             client.ws.terminate();
+            this.connections.delete(clientId);
+        }
+    }
+
+    disconnectClient(clientId, reason = 'Server disconnect') {
+        const client = this.connections.get(clientId);
+        if (client) {
+            if (client.heartbeatTimer) {
+                clearInterval(client.heartbeatTimer);
+            }
+            
+            client.ws.close(1000, reason);
+            if (client.uuid) this.removeUuidConnection(client.uuid, clientId);
             this.connections.delete(clientId);
         }
     }
@@ -149,6 +242,9 @@ class WebSocketManager {
             if (existingClient) {
                 console.log(`Closing existing connection ${existingClientId} for UUID ${uuid} due to new connection`);
                 existingClient.ws.close(1000, 'New connection established');
+                if (existingClient.heartbeatTimer) {
+                    clearInterval(existingClient.heartbeatTimer);
+                }
                 this.connections.delete(existingClientId);
             }
         }
@@ -198,34 +294,63 @@ class WebSocketManager {
         if (clientId) {
             const client = this.connections.get(clientId);
             if (client && client.ws.readyState === WebSocket.OPEN) {
+                // Don't validate token for active WebSocket connections - trust the connection
                 this.sendMessage(client.ws, type, data);
+                return true;
             }
         }
+        return false;
     }
 
-    disconnectUuid(uuid) {
+    disconnectUuid(uuid, reason = 'Disconnected by server') {
        const clientId = this.uuidConnections.get(uuid);
        if (clientId) {
            const client = this.connections.get(clientId);
            if (client) {
-               client.ws.close('Disconnected by server');
+               if (client.heartbeatTimer) {
+                   clearInterval(client.heartbeatTimer);
+               }
+               client.ws.close(1000, reason);
                this.connections.delete(clientId);
            }
            this.uuidConnections.delete(uuid);
-           console.log(`Disconnected client for UUID: ${uuid}`);
+           console.log(`Disconnected client for UUID: ${uuid} - ${reason}`);
        }
     }
 
-    startHeartbeat() {
+    // Periodic cleanup of stale connections
+    startPeriodicCleanup() {
         setInterval(() => {
+            const now = Date.now();
+            const staleConnections = [];
+
             this.connections.forEach((client, clientId) => {
-                if (client.ws.readyState === WebSocket.OPEN) {
-                    client.ws.ping();
-                } else {
-                    this.connections.delete(clientId);
+                // Check for stale connections (no heartbeat for longer than expected)
+                const timeSinceHeartbeat = now - client.lastHeartbeat;
+                
+                // Only consider truly stale connections (much longer timeout)
+                if (timeSinceHeartbeat > this.heartbeatTimeout + this.heartbeatInterval + 120000) { // 2+ minutes extra
+                    console.log(`Marking connection ${clientId} as stale: ${timeSinceHeartbeat}ms since last heartbeat`);
+                    staleConnections.push(clientId);
                 }
+                // Don't validate tokens for connected clients - this was causing the issue
+                // Removed token validation from periodic cleanup
             });
-        }, 30000);
+
+            staleConnections.forEach(clientId => {
+                console.log(`Cleaning up truly stale connection: ${clientId}`);
+                this.disconnectClient(clientId, 'Stale connection cleanup');
+            });
+
+            if (staleConnections.length > 0) {
+                console.log(`Cleaned up ${staleConnections.length} truly stale connections`);
+            }
+        }, 300000); // Run every 5 minutes instead of every minute
+    }
+
+    startHeartbeat() {
+        // Legacy method - now using per-client heartbeat monitoring
+        this.startPeriodicCleanup();
     }
 
     getConnectedClients() {
@@ -233,10 +358,11 @@ class WebSocketManager {
             id: client.id,
             ip: client.ip,
             connectedAt: client.connectedAt,
-            authenticated: client.authenticated,
+            authenticated: !!client.uuid,
             uuid: client.uuid,
             playerStatus: client.playerStatus,
-            location: client.location
+            location: client.location,
+            lastHeartbeat: new Date(client.lastHeartbeat)
         }));
     }
 

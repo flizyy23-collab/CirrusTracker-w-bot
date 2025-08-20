@@ -47,6 +47,68 @@ const endpoints = {
 };
 
 function registerEndpoints(app) {
+    app.get('/api/auth/websocket-token', async (req, res) => {
+        if (!req.query.uuid) {
+            return res.status(400).json({ error: "Missing UUID parameter" });
+        }
+
+        const { uuid } = req.query;
+        
+        try {
+            const { getToken } = require("./features/auth/authentication");
+            const token = getToken(uuid);
+            
+            if (!token) {
+                return res.status(401).json({ error: "No token found" });
+            }
+
+            if (!token.isAuthenticated()) {
+                return res.status(401).json({ error: "Not authenticated" });
+            }
+
+            if (token.isExpired()) {
+                return res.status(401).json({ error: "Token expired" });
+            }
+
+            res.status(200).send(token.wsToken);
+        } catch (error) {
+            console.error(`Error getting WebSocket token for ${uuid}:`, error);
+            res.status(500).json({ error: "Internal server error" });
+        }
+    });
+
+    app.post('/api/auth/refresh-token', async (req, res) => {
+        if (!req.query.uuid) {
+            return res.status(400).json({ error: "Missing UUID parameter" });
+        }
+
+        const { uuid } = req.query;
+        
+        try {
+            const { getToken } = require("./features/auth/authentication");
+            const token = getToken(uuid);
+            
+            if (!token) {
+                return res.status(401).json({ error: "No token found" });
+            }
+
+            if (!token.isAuthenticated()) {
+                return res.status(401).json({ error: "Not authenticated" });
+            }
+
+            token.updateLastValidated();
+            
+            res.status(200).json({
+                success: true,
+                refreshed_at: new Date().toISOString(),
+                token_age: token.getAge()
+            });
+        } catch (error) {
+            console.error(`Error refreshing token for ${uuid}:`, error);
+            res.status(500).json({ error: "Internal server error" });
+        }
+    });
+    
     app.use('/api/:endpoint', async (req, res) => {
         const endpointName = req.params.endpoint;
         const endpoint = endpoints[endpointName];
@@ -58,6 +120,3 @@ function registerEndpoints(app) {
         }
     });
 }
-
-
-
