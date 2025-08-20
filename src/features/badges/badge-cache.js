@@ -35,31 +35,44 @@ class BadgeCacheService {
      */
     async updateCache() {
         if (this.isCalculating) return;
-        
+
         this.isCalculating = true;
         try {
             console.log('Updating badge cache...');
-            this.playerBadgeCache.clear();
-            this.leaderboardCache.clear();
+            const shadowPlayerBadgeCache = new Map();
+            const shadowLeaderboardCache = new Map();
+
+            const addPlayerBadgeToCache = (uuid, badgeId) => {
+                if (!shadowPlayerBadgeCache.has(uuid)) {
+                    shadowPlayerBadgeCache.set(uuid, []);
+                }
+                const playerBadges = shadowPlayerBadgeCache.get(uuid);
+                if (!playerBadges.includes(badgeId)) {
+                    playerBadges.push(badgeId);
+                }
+            };
             
             // Process each raid leaderboard
             for (let raidId = -1; raidId <= 3; raidId++) {
                 try {
                     const leaderboard = await getLeaderboard(raidId);
                     const leaderboardArray = Array.from(leaderboard.keys());
-                    this.leaderboardCache.set(raidId, leaderboardArray);
+                    shadowLeaderboardCache.set(raidId, leaderboardArray);
                     
                     // Top 3 for each raid
                     for (let position = 0; position < 3 && position < leaderboardArray.length; position++) {
                         const uuid = leaderboardArray[position];
                         if (uuid) {
-                            this.addPlayerBadge(uuid, this.getRaidBadgeId(raidId, position + 1));
+                            addPlayerBadgeToCache(uuid, this.getRaidBadgeId(raidId, position + 1));
                         }
                     }
                 } catch (error) {
                     console.error(`Error caching leaderboard for raid ${raidId}:`, error);
                 }
             }
+
+            this.playerBadgeCache = shadowPlayerBadgeCache;
+            this.leaderboardCache = shadowLeaderboardCache;
             
             console.log('Badge cache updated successfully');
         } catch (error) {
@@ -80,19 +93,6 @@ class BadgeCacheService {
         }
         const raidName = raidNames[raidId] || 'UNKNOWN';
         return `${raidName}_TOP_${position}`;
-    }
-
-    /**
-     * Add a badge to a player's cache
-     */
-    addPlayerBadge(uuid, badgeId) {
-        if (!this.playerBadgeCache.has(uuid)) {
-            this.playerBadgeCache.set(uuid, []);
-        }
-        const playerBadges = this.playerBadgeCache.get(uuid);
-        if (!playerBadges.includes(badgeId)) {
-            playerBadges.push(badgeId);
-        }
     }
 
     /**
