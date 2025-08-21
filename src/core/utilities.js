@@ -152,13 +152,13 @@ function requestUUID(username) {
               /(\w{8})(\w{4})(\w{4})(\w{4})(\w{12})/,
               '$1-$2-$3-$4-$5'
           );
-          resolve(id);
+          resolve({ uuid: id, name: data.name });
 
           // Dynamically import to avoid circular dependency
           setImmediate(async () => {
             try {
               const { insertPlayer } = require("./database");
-              await insertPlayer(id, username);
+              await insertPlayer(id, data.name); // Use data.name for capitalized username
             } catch (err) {
               console.error('Error inserting player:', err);
             }

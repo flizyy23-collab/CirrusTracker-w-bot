@@ -46,14 +46,15 @@ class AccountLinkingService {
                 };
             }
 
-            // Validate and get Minecraft UUID
-            const minecraftUuid = await requestUUID(minecraftUsername);
-            if (!minecraftUuid) {
+            // Validate and get Minecraft UUID and capitalized username
+            const uuidAndName = await requestUUID(minecraftUsername);
+            if (!uuidAndName) {
                 return {
                     success: false,
                     error: 'Invalid Minecraft username. Please check the spelling and try again.'
                 };
             }
+            const { uuid: minecraftUuid, name: capitalizedMinecraftUsername } = uuidAndName;
 
             // Check if Minecraft account is already linked to another Discord account
             const existingMinecraftLink = await getAccountLinkByMinecraft(minecraftUuid);
@@ -74,7 +75,7 @@ class AccountLinkingService {
             const success = await createAccountLink(
                 discordId, 
                 minecraftUuid, 
-                minecraftUsername, 
+                capitalizedMinecraftUsername, 
                 verificationCode, 
                 expiresAt
             );
@@ -83,7 +84,7 @@ class AccountLinkingService {
                 return {
                     success: true,
                     code: verificationCode,
-                    minecraftUsername: minecraftUsername,
+                    minecraftUsername: capitalizedMinecraftUsername,
                     expiryMinutes: expiryMinutes,
                     expiresAt: expiresAt
                 };
