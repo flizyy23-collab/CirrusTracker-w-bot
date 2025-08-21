@@ -26,7 +26,7 @@ class VerifyLinkEndpoint {
 
             // Verify the authentication token for this UUID
             const tokenObject = await getToken(uuid);
-            if (!tokenObject || tokenObject.token !== token || !tokenObject.isAuthenticated()) {
+            if (!tokenObject || tokenObject.serverId !== token || !tokenObject.isAuthenticated()) {
                 return res.status(401).json({
                     success: false,
                     error: 'Invalid or expired authentication token'
@@ -39,13 +39,49 @@ class VerifyLinkEndpoint {
             if (result.success) {
                 // Try to assign linked role and ensure user has a rank role
                 try {
-                    await roleManager.addLinkedRole(result.link.discordId);
+                    const linkedRoleAdded = await roleManager.addLinkedRole(result.link.discordId);
+                    if (!linkedRoleAdded) {
+                        console.warn(`Linked role was not added for user ${result.link.discordId}. Check logs for details.`);
+                    }
+                    // Introduce a small delay to avoid potential race conditions with Discord API
+                    await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
                     await roleManager.ensureUserHasRank(result.link.discordId);
+
+                    // After roles are assigned, determine and set the in-game rank
+                    try {
+                        const discordClient = rankService.discordClient;
+                        if (discordClient) {
+                            const guild = discordClient.guilds.cache.first();
+                            if (guild) {
+                                const member = await guild.members.fetch(result.link.discordId);
+                                if (member) {
+                                    const highestRank = rankService.calculateMemberRank(Array.from(member.roles.cache.keys()));
+                                    if (highestRank) {
+                                        console.log(`Setting in-game rank for ${result.link.minecraftUsername} to ${highestRank.identifier} based on Discord roles.`);
+                                        // Use the bot's own ID as the setterDiscordId for automated rank assignment
+                                        const botDiscordId = discordClient.user.id;
+                                        await rankService.setMemberRank(result.link.discordId, highestRank.key, botDiscordId);
+                                    } else {
+                                        console.log(`No applicable in-game rank found for ${result.link.minecraftUsername} based on Discord roles.`);
+                                    }
+                                } else {
+                                    console.warn(`Could not fetch Discord member ${result.link.discordId} for rank assignment.`);
+                                }
+                            } else {
+                                console.warn('No Discord guild found in cache for rank assignment.');
+                            }
+                        } else {
+                            console.warn('Discord client not available in rankService for rank assignment.');
+                        }
+                    } catch (rankAssignmentError) {
+                        console.error('Error assigning in-game rank after linking:', rankAssignmentError);
+                        // Don't fail the verification if rank assignment fails
+                    }
                     
                     // Refresh the member cache immediately to include the newly linked user
                     await rankService.refreshMemberCache();
                 } catch (roleError) {
-                    console.error('Error assigning roles:', roleError);
+                    console.error('Error assigning roles or refreshing cache:', roleError);
                     // Don't fail the verification if role assignment fails
                 }
 

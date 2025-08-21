@@ -72,7 +72,7 @@ module.exports = {
                             inline: true 
                         }
                     )
-                    .setFooter({ text: 'The verification code will expire automatically. Authentication required.' });
+                    .setFooter({ text: 'The verification code will expire automatically.' });
 
                 return await interaction.reply({ embeds: [embed], ephemeral: true });
             } else {

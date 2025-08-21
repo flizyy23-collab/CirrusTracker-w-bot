@@ -19,7 +19,7 @@ class UnlinkMinecraftEndpoint {
 
             // Verify the authentication token for this UUID
             const tokenObject = await getToken(uuid);
-            if (!tokenObject || tokenObject.token !== token || !tokenObject.isAuthenticated()) {
+            if (!tokenObject || tokenObject.serverId !== token || !tokenObject.isAuthenticated()) {
                 return res.status(401).json({
                     success: false,
                     error: 'Invalid or expired authentication token'

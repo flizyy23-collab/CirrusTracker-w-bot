@@ -78,6 +78,19 @@ class RankService {
     }
 
     /**
+     * Returns a random element from an array.
+     * @param {Array} arr - The array to pick from.
+     * @returns {*} A random element from the array.
+     */
+    getRandomElement(arr) {
+        if (!Array.isArray(arr) || arr.length === 0) {
+            return undefined;
+        }
+        const randomIndex = Math.floor(Math.random() * arr.length);
+        return arr[randomIndex];
+    }
+
+    /**
      * Simple cache refresh using Discord.js guild cache (no API calls)
      */
     async refreshMemberCache() {
@@ -367,14 +380,16 @@ class RankService {
                 };
             }
 
-            // Remove all existing rank roles
+            // Remove all existing rank roles, but preserve linked role and other non-rank roles
             const allRankRoleIds = Object.values(this.ranks).map(rank => rank['discord-role-id']);
             const memberRankRoles = targetMember.roles.cache.filter(role => 
                 allRankRoleIds.includes(role.id)
             );
 
             if (memberRankRoles.size > 0) {
+                console.log(`Removing existing rank roles: ${Array.from(memberRankRoles.keys()).join(', ')}`);
                 await targetMember.roles.remove(memberRankRoles);
+                console.log(`Rank roles removed. Remaining roles: ${Array.from(targetMember.roles.cache.keys()).join(', ')}`);
             }
 
             // Add the new rank role
@@ -492,8 +507,8 @@ class RankService {
                 };
             }
 
-            // Select the highest ranked eligible client (they're already sorted by rank desc)
-            const selectedClient = eligibleClients[0];
+            // Select a random eligible client
+            const selectedClient = this.getRandomElement(eligibleClients);
             const promotionPacket = {
                 type: 'rank_promotion_request',
                 data: {
@@ -632,20 +647,26 @@ class RankService {
 
             // Check queued promotions that this client can handle
             for (const [requestId, queuedPromotion] of this.promotionQueue.entries()) {
-                if (this.canPromoteToRank(clientIngameRank, queuedPromotion.newRank)) {
+                // Find all eligible clients for this specific queued promotion
+                const eligiblePromotersForQueued = await this.findEligiblePromoters(queuedPromotion.newRank, queuedPromotion.targetUuid);
+
+                // Filter to only include the currently connected client if it's eligible
+                const currentClientAsEligible = eligiblePromotersForQueued.find(p => p.uuid === clientUuid);
+
+                if (currentClientAsEligible) {
                     console.log(`Processing queued promotion: ${queuedPromotion.targetUsername} -> rank ${queuedPromotion.newRank}`);
                     
                     // Remove from queue
                     this.promotionQueue.delete(requestId);
                     
-                    // Send the promotion request
+                    // Send the promotion request to the current client
                     const promotionPacket = {
                         type: 'rank_promotion_request',
                         data: {
                             targetUuid: queuedPromotion.targetUuid,
                             targetUsername: queuedPromotion.targetUsername,
                             newRank: queuedPromotion.newRank,
-                            promoterRank: clientIngameRank,
+                            promoterRank: currentClientAsEligible.rank,
                             requestorRank: queuedPromotion.requestorRank,
                             requestId: queuedPromotion.requestId
                         }
@@ -666,10 +687,10 @@ class RankService {
                         targetUsername: queuedPromotion.targetUsername,
                         newRank: queuedPromotion.newRank,
                         selectedClient: clientUuid,
-                        selectedPromoterRank: clientIngameRank
+                        selectedPromoterRank: currentClientAsEligible.rank
                     });
 
-                    console.log(`Queued promotion request sent to ${clientUuid} (rank ${clientIngameRank})`);
+                    console.log(`Queued promotion request sent to ${clientUuid} (rank ${currentClientAsEligible.rank})`);
                     break; // Process one at a time
                 }
             }
@@ -736,8 +757,8 @@ class RankService {
                     continue;
                 }
 
-                // Select client and send retry request
-                const selectedClient = eligibleClients[0];
+                // Select a random client and send retry request
+                const selectedClient = this.getRandomElement(eligibleClients);
                 const promotionPacket = {
                     type: 'rank_promotion_request',
                     data: {

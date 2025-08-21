@@ -65,7 +65,6 @@ const rankPromotionResponseHandler = async (client, packet) => {
     
     console.log(`Rank promotion response received from ${client.uuid}: ${success ? 'SUCCESS' : 'FAILED'} for ${targetUsername} -> rank ${newRank}`);
     
-    // Handle the response in the rank service
     const { rankService } = require('../ranks/rank-service');
     rankService.handlePromotionResponse(requestId, success, error);
     

@@ -56,11 +56,23 @@ class RoleManager {
             // Try to find the user in any of the cached guilds
             for (const [guildId, guild] of this.guilds) {
                 try {
-                    const member = await guild.members.fetch(discordId);
+                    const member = await guild.members.fetch(discordId); // Force fetch to get latest member data
                     if (member) {
-                        await member.roles.add(this.linkedRoleId);
-                        console.log(`Added linked role to user ${discordId} in guild ${guild.name}`);
-                        return true;
+                        try {
+                            await member.roles.add(this.linkedRoleId);
+                            // After attempting to add, re-fetch the member to confirm the role is present
+                            const updatedMember = await guild.members.fetch(discordId);
+                            if (updatedMember.roles.cache.has(this.linkedRoleId)) {
+                                console.log(`Confirmed: Added linked role to user ${discordId} in guild ${guild.name}`);
+                                return true;
+                            } else {
+                                console.error(`CRITICAL: Linked role ${this.linkedRoleId} was NOT added to user ${discordId} in guild ${guild.name} despite no immediate error.`);
+                                return false;
+                            }
+                        } catch (addRoleError) {
+                            console.error(`Failed to add linked role ${this.linkedRoleId} to user ${discordId} in guild ${guild.name}:`, addRoleError);
+                            return false; // Indicate failure to add role
+                        }
                     }
                 } catch (memberError) {
                     // User not in this guild, continue to next
