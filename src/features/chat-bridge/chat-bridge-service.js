@@ -41,7 +41,8 @@ class ChatBridgeService {
 
     async handleMinecraftMessage(client, packet) {
         const { username, message } = packet.data;
-        const uuid = await requestUUID(username);
+        const uuidAndName = await requestUUID(username);
+        const uuid = uuidAndName.uuid;
 
         if (!uuid) {
             console.warn(`Could not resolve UUID for username: ${username}`);

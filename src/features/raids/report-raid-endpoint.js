@@ -23,7 +23,7 @@ class ReportRaidEndpoint {
         const reportPromise = (async () => {
             let tokenObject = await getToken(reporter);
 
-            if (!tokenObject || tokenObject.token !== token || !tokenObject.isAuthenticated()) return res.status(400).send("Invalid token");
+            if (!tokenObject || tokenObject.serverId !== token || !tokenObject.isAuthenticated()) return res.status(400).send("Invalid token");
 
             let players = [player1, player2, player3, player4];
 
@@ -32,7 +32,7 @@ class ReportRaidEndpoint {
 
                 let uuid = await getPlayerUUID(player);
 
-                if (!uuid) uuid = await requestUUID(player);
+                if (!uuid) uuid = await requestUUID(player).uuid;
                 if (!uuid) return res.status(400).send("Invalid player: " + player);
 
                 players[i] = uuid;
