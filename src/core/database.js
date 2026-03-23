@@ -10,6 +10,7 @@ function databaseInit() {
 
     pool = mysql.createPool({
         host: config.get("sql.host"),
+        port: config.get("sql.port") || 3306,
         user: config.get("sql.user"),
         password: config.get("sql.password"),
         database: config.get("sql.database"),
@@ -167,9 +168,30 @@ async function insertAspect(giver, receiver, reporter) {
     }
 }
 
-async function checkForRecentRaid(player) {
+async function setAspects(receiverUuid, amount, reporter) {
     try {
         const connection = await pool.getConnection();
+
+        // Delete all existing aspect records for this player
+        await connection.execute(`DELETE FROM aspects WHERE receiver = ?`, [receiverUuid]);
+
+        // Insert new records — each record = 0.5 aspects
+        const insertCount = Math.round(amount / 0.5);
+        for (let i = 0; i < insertCount; i++) {
+            await connection.execute(
+                `INSERT INTO aspects (giver, receiver, reporter) VALUES (?, ?, ?)`,
+                [receiverUuid, receiverUuid, reporter]
+            );
+        }
+
+        connection.release();
+    } catch (err) {
+        console.error("Error setting aspects: ", err);
+    }
+}
+
+async function checkForRecentRaid(player) {
+    try {
 
         const query = `
             SELECT * FROM raids
@@ -405,7 +427,7 @@ async function getOwedAspects() {
             let raids = await getRaids(uuid);
 
             let totalAspects = aspects.length;
-            let owedAspects = Math.max(Math.floor(raids.length / 2) - totalAspects, 0);
+            let owedAspects = (raids.length * 0.5) - totalAspects;
 
             playerMap.set(uuid, owedAspects);
         }
@@ -416,7 +438,7 @@ async function getOwedAspects() {
         playerMap = new Map([...playerMap.entries()].sort((a, b) => b[1] - a[1]));
 
         let playerArray = [...playerMap.entries()];
-        playerArray = playerArray.filter(([key, value]) => value > 0);
+        playerArray = playerArray.filter(([key, value]) => value !== 0);
         playerMap = new Map(playerArray);
 
         return playerMap;
@@ -885,6 +907,6 @@ async function getPlayerByDiscordId(discordId) {
     }
 }
 
-module.exports = { databaseInit, insertRaid, insertAspect, getGXPLeaderboard, getPlayerUUID,
+module.exports = { databaseInit, insertRaid, insertAspect, setAspects, getGXPLeaderboard, getPlayerUUID,
     getPlayerUsername, insertPlayer, getRaids, getRaidCount, getAspects, getOwedAspects, getLeaderboard, updateGuild, updateUsername, getPlayers, getPlayersByGuild, getGuild, toggleNeedsAspects,
     createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks, getAccountLinksForPlayers, getPlayerByDiscordId };
