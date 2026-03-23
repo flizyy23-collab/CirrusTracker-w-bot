@@ -54,7 +54,9 @@ class ConfigManager {
 
     loadConfig() {
         try {
-            const configData = fs.readFileSync(this.configPath, 'utf8');
+            let configData = fs.readFileSync(this.configPath, 'utf8');
+            // Strip BOM and normalize line endings
+            configData = configData.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
             this.config = JSON.parse(configData);
         } catch (error) {
             throw new Error(`Failed to load config: ${error.message}`);
