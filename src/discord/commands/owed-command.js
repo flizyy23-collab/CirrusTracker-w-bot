@@ -15,6 +15,11 @@ module.exports = {
             fields.push({ name: playerName, value: `\`\`\`${owedAspects}\`\`\``, inline: true });
         }
 
+        if (fields.length === 0) {
+            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x0099FF).setTitle('**Players with most Owed Aspects**').setDescription('No aspect data yet.')] });
+            return;
+        }
+
         const itemsPerPage = 12;
         const totalPages = Math.ceil(fields.length / itemsPerPage);
 

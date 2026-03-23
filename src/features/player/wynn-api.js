@@ -3,11 +3,10 @@ const { config } = require("../../core/config");
 
 function getWynnUser(uuid) {
     return new Promise((resolve, reject) => {
+        const token = config.get("wynncraft-token");
         const options = {
             url: `https://api.wynncraft.com/v3/player/${uuid}`,
-            headers: {
-                Authorization: `Bearer ${config.get("wynncraft-token")}`
-            }
+            headers: token && token !== "WYNNCRAFT_API_TOKEN" ? { Authorization: `Bearer ${token}` } : {}
         };
 
         request(options, function (error, response, body) {

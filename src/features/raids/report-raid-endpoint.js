@@ -32,7 +32,7 @@ class ReportRaidEndpoint {
 
                 let uuid = await getPlayerUUID(player);
 
-                if (!uuid) uuid = await requestUUID(player).uuid;
+                if (!uuid) uuid = (await requestUUID(player))?.uuid;
                 if (!uuid) return res.status(400).send("Invalid player: " + player);
 
                 players[i] = uuid;

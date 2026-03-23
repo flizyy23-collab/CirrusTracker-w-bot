@@ -33,7 +33,7 @@ module.exports = {
         let raidData = await getRaids(uuid);
 
         let totalAspects = aspectData.length;
-        let owedAspects = Math.max(Math.floor(raidData.length / 2) - totalAspects, 0);
+        let owedAspects = (raidData.length * 0.5) - totalAspects;
 
         const response = await axios.get(`https://crafatar.com/renders/head/${uuid}?overlay=true`, { responseType: 'arraybuffer' });
         const buffer = Buffer.from(response.data, 'binary');

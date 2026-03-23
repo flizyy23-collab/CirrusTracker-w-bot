@@ -36,15 +36,19 @@ module.exports = {
             raidCounts[raidIndex]++;
         }
 
-        const response = await axios.get(`https://crafatar.com/renders/head/${uuid}?overlay=true`, { responseType: 'arraybuffer' });
-        const buffer = Buffer.from(response.data, 'binary');
-        const attachment = new AttachmentBuilder(buffer, { name: 'thumbnail.png' });
+        let attachment = null;
+        try {
+            const response = await axios.get(`https://crafatar.com/renders/head/${uuid}?overlay=true`, { responseType: 'arraybuffer', timeout: 5000 });
+            const buffer = Buffer.from(response.data, 'binary');
+            attachment = new AttachmentBuilder(buffer, { name: 'thumbnail.png' });
+        } catch (e) {
+            // crafatar unavailable, skip thumbnail
+        }
 
         const exampleEmbed = new EmbedBuilder()
             .setColor(0x0099FF)
             .setAuthor({ name: 'Player Guild Raid Stats' })
             .setTitle(`**${playerName}**`)
-            .setThumbnail('attachment://thumbnail.png')
             .setDescription(`*${days ? `Last ${days} Day` + (days !== 1 ? "s" : "") : 'All Time'}*`)
             .addFields(
                 { name: '\u200B', value: '\u200B' },
@@ -55,6 +59,7 @@ module.exports = {
                 { name: 'The Nameless Anomaly', value: `\`\`\`Completions: ${raidCounts[3].toString()}   \`\`\``, inline: true }
             )
 
-        await interaction.reply({ embeds: [exampleEmbed], files: [attachment] });
+        if (attachment) exampleEmbed.setThumbnail('attachment://thumbnail.png');
+        await interaction.reply({ embeds: [exampleEmbed], files: attachment ? [attachment] : [] });
     },
 };

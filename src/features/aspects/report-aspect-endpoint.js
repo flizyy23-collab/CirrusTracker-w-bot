@@ -27,8 +27,8 @@ class ReportAspectEndpoint {
             let giverUUID = await getPlayerUUID(giver);
             let receiverUUID = await getPlayerUUID(receiver);
 
-            if (!giverUUID) giverUUID = await requestUUID(giver).uuid;
-            if (!receiverUUID) receiverUUID = await requestUUID(receiver).uuid;
+            if (!giverUUID) giverUUID = (await requestUUID(giver))?.uuid;
+            if (!receiverUUID) receiverUUID = (await requestUUID(receiver))?.uuid;
 
             if (!giverUUID || !receiverUUID) return res.status(400).send("Invalid player");
 

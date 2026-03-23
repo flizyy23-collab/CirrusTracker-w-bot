@@ -9,6 +9,7 @@ const {ReportAspectEndpoint} = require("./features/aspects/report-aspect-endpoin
 const {initQueue} = require("./features/player/player-queue");
 const {ToggleAspectsEndpoint} = require("./features/aspects/toggle-aspects-endpoint");
 const {VerifyLinkEndpoint} = require("./features/account-linking/verify-link-endpoint");
+const {ReportChatEndpoint} = require("./features/chat-bridge/report-chat-endpoint");
 const {UnlinkMinecraftEndpoint} = require("./features/account-linking/unlink-minecraft-endpoint");
 const {PlayersEndpoint} = require("./features/player/players-endpoint");
 const { badgesService } = require("./features/badges/badges-service");
@@ -44,6 +45,7 @@ const endpoints = {
     'verify-link': new VerifyLinkEndpoint(),
     'unlink-minecraft': new UnlinkMinecraftEndpoint(),
     'players': new PlayersEndpoint(),
+    'report-chat': new ReportChatEndpoint(),
 };
 
 function registerEndpoints(app) {
