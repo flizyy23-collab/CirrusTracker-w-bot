@@ -54,6 +54,11 @@ client.once('ready', () => {
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
+    const allowedChannelId = getConfig('bot-channel-id');
+    if (allowedChannelId && interaction.channelId !== allowedChannelId) {
+        return interaction.reply({ content: `Commands can only be used in <#${allowedChannelId}>.`, ephemeral: true });
+    }
+
     const command = interaction.client.commands.get(interaction.commandName);
 
     if (!command) {
