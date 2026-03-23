@@ -41,9 +41,14 @@ class ChatBridgeService {
 
     async handleMinecraftMessage(client, packet) {
         const { username, message } = packet.data;
-        const uuidAndName = await requestUUID(username);
+
+        // Resolve nick to real IGN using nick-map in config
+        const nickMap = config.get('nick-map') || {};
+        const resolvedUsername = nickMap[username] || username;
+
+        const uuidAndName = await requestUUID(resolvedUsername);
         const uuid = uuidAndName?.uuid;
-        const realUsername = uuidAndName?.name || username;
+        const realUsername = uuidAndName?.name || resolvedUsername;
 
         if (!uuid) {
             console.warn(`Could not resolve UUID for username: ${username}`);
