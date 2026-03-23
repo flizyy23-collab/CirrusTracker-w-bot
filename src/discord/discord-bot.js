@@ -1,6 +1,7 @@
 const {Client, GatewayIntentBits, Collection, Events} = require("discord.js");
 const {join} = require("path");
-const {token} = require("../../config.json");
+const { get: getConfig } = require('../core/config');
+const token = getConfig('token');
 const {readdirSync} = require("fs");
 const { chatBridge } = require('../features/chat-bridge/chat-bridge-service');
 const { rankService } = require('../features/ranks/rank-service');
@@ -82,6 +83,14 @@ client.on(Events.MessageCreate, async message => {
         }
     }
     await chatBridge.handleDiscordMessage(message.author, body, message.channel.id);
+});
+
+client.on('error', (error) => {
+    console.error('Discord client error:', error.message);
+});
+
+process.on('unhandledRejection', (error) => {
+    console.error('Unhandled rejection:', error?.message);
 });
 
 module.exports = { client };

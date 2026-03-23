@@ -12,14 +12,26 @@ class ConfigManager {
 
     initialize() {
         try {
-            if (!fs.existsSync(this.configPath)) {
-                this.createConfigFromTemplate();
+            if (process.env.CONFIG_JSON) {
+                this.loadConfigFromEnv();
+            } else {
+                if (!fs.existsSync(this.configPath)) {
+                    this.createConfigFromTemplate();
+                }
+                this.loadConfig();
             }
-
-            this.loadConfig();
         } catch (error) {
             console.error('Error initializing config:', error.message);
             throw error;
+        }
+    }
+
+    loadConfigFromEnv() {
+        try {
+            this.config = JSON.parse(process.env.CONFIG_JSON);
+            console.log('Loaded config from CONFIG_JSON environment variable');
+        } catch (error) {
+            throw new Error(`Failed to parse CONFIG_JSON environment variable: ${error.message}`);
         }
     }
 
