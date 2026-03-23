@@ -57,6 +57,8 @@ class ConfigManager {
             let configData = fs.readFileSync(this.configPath, 'utf8');
             // Strip BOM and normalize line endings
             configData = configData.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+            console.log(`Config first 30 chars: ${JSON.stringify(configData.slice(0, 30))}`);
+            console.log(`Config char codes at 0-9: ${Array.from(configData.slice(0, 10)).map(c => c.charCodeAt(0)).join(',')}`);
             this.config = JSON.parse(configData);
         } catch (error) {
             throw new Error(`Failed to load config: ${error.message}`);
