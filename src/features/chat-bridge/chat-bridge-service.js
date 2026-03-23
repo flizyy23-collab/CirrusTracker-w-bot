@@ -43,6 +43,7 @@ class ChatBridgeService {
         const { username, message } = packet.data;
         const uuidAndName = await requestUUID(username);
         const uuid = uuidAndName?.uuid;
+        const realUsername = uuidAndName?.name || username;
 
         if (!uuid) {
             console.warn(`Could not resolve UUID for username: ${username}`);
@@ -54,29 +55,29 @@ class ChatBridgeService {
             return null;
         }
 
-        if (this.isDuplicateMessage(username, message)) {
-            console.log(`Duplicate message filtered: ${username}: ${message}`);
+        if (this.isDuplicateMessage(realUsername, message)) {
+            console.log(`Duplicate message filtered: ${realUsername}: ${message}`);
             return null;
         }
 
-        console.log(`Processing Minecraft message: ${username}: ${message}: ${uuid}`);
+        console.log(`Processing Minecraft message: ${realUsername}: ${message}: ${uuid}`);
         
         let messageData = message;
         let success = false;
 
         if (message.includes('󰀀󰄀')) {
-            console.log(`Item hash detected in message from ${username}`);
+            console.log(`Item hash detected in message from ${realUsername}`);
             
             try {
                 messageData = await analyzeAndFormatItems(message);
-                console.log(`Successfully processed item analysis for ${username}`);
+                console.log(`Successfully processed item analysis for ${realUsername}`);
             } catch (error) {
-                console.error(`Error processing item hash from ${username}:`, error.message);
-                console.log(`Falling back to original message for ${username}`);
+                console.error(`Error processing item hash from ${realUsername}:`, error.message);
+                console.log(`Falling back to original message for ${realUsername}`);
             }
         }
 
-        success = await this.discordWebhook.sendMinecraftSkinMessage(username, messageData, uuid);
+        success = await this.discordWebhook.sendMinecraftSkinMessage(realUsername, messageData, uuid);
         
         if (success) {
             console.log(`Bridged message to Discord from ${username}`);
