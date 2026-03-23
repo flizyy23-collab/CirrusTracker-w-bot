@@ -41,48 +41,37 @@ class ChatBridgeService {
 
     async handleMinecraftMessage(client, packet) {
         const { username, message } = packet.data;
-
-        // Resolve nick to real IGN using nick-map in config
-        const nickMap = config.get('nick-map') || {};
-        const resolvedUsername = nickMap[username] || username;
-
-        const uuidAndName = await requestUUID(resolvedUsername);
-        const uuid = uuidAndName?.uuid;
-        const realUsername = uuidAndName?.name || resolvedUsername;
-
-        if (!uuid) {
-            console.warn(`Could not resolve UUID for username: ${username}`);
-            return null;
-        }
+        const uuidAndName = await requestUUID(username);
+        const uuid = uuidAndName?.uuid || null;
 
         if (!username || !message) {
             console.warn('Invalid chat message packet: missing username or message');
             return null;
         }
 
-        if (this.isDuplicateMessage(realUsername, message)) {
-            console.log(`Duplicate message filtered: ${realUsername}: ${message}`);
+        if (this.isDuplicateMessage(username, message)) {
+            console.log(`Duplicate message filtered: ${username}: ${message}`);
             return null;
         }
 
-        console.log(`Processing Minecraft message: ${realUsername}: ${message}: ${uuid}`);
+        console.log(`Processing Minecraft message: ${username}: ${message}: ${uuid}`);
         
         let messageData = message;
         let success = false;
 
         if (message.includes('󰀀󰄀')) {
-            console.log(`Item hash detected in message from ${realUsername}`);
+            console.log(`Item hash detected in message from ${username}`);
             
             try {
                 messageData = await analyzeAndFormatItems(message);
-                console.log(`Successfully processed item analysis for ${realUsername}`);
+                console.log(`Successfully processed item analysis for ${username}`);
             } catch (error) {
-                console.error(`Error processing item hash from ${realUsername}:`, error.message);
-                console.log(`Falling back to original message for ${realUsername}`);
+                console.error(`Error processing item hash from ${username}:`, error.message);
+                console.log(`Falling back to original message for ${username}`);
             }
         }
 
-        success = await this.discordWebhook.sendMinecraftSkinMessage(realUsername, messageData, uuid);
+        success = await this.discordWebhook.sendMinecraftSkinMessage(username, messageData, uuid);
         
         if (success) {
             console.log(`Bridged message to Discord from ${username}`);
