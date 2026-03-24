@@ -94,7 +94,14 @@ function validateToken(tokenString) {
         return { valid: false, reason: 'No token provided' };
     }
 
-    const uuid = wsTokenLookup.get(tokenString);
+    // Check wsToken lookup first
+    let uuid = wsTokenLookup.get(tokenString);
+    
+    // Also check serverId lookup (mod uses serverId for both HTTP and WS)
+    if (!uuid) {
+        uuid = mojangServerIds.get(tokenString);
+    }
+
     if (!uuid) {
         return { valid: false, reason: 'Token not found' };
     }
