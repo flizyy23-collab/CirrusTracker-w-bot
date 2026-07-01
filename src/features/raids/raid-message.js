@@ -6,7 +6,8 @@ const { client } = require("../../discord/discord-bot")
 const raids = ["Nest of the Grootslangs",
     "Orphion's Nexus of Light",
     "The Canyon Colossus",
-    "The Nameless Anomaly"
+    "The Nameless Anomaly",
+    "The Wartorn Palace"
 ]
 
 const raidsAbbr = [
@@ -14,6 +15,7 @@ const raidsAbbr = [
     "NOL",
     "TCC",
     "TNA",
+    "TWP",
 ]
 
 function getWeeklyTimestamp() {
@@ -42,7 +44,7 @@ function getWeeklyTimestamp() {
     return targetDate;
 }
 
-async function sendRaidEmbed(raidID, player1, player2, player3, player4) {
+async function sendRaidEmbed(raidID, players) {
     this.config = config.get('chat-bridge');
     const channelId = this.config['channel-id'];
     try {
@@ -53,9 +55,27 @@ async function sendRaidEmbed(raidID, player1, player2, player3, player4) {
         const totalRaidCount = await getRaidCount();
         const weeklyRaidCount = await getRaidCount(null, mysqlTimestamp);
 
+        // Format player list: "A", "A & B", "A, B, & C", "A, B, C, & D"
+        let playerText;
+        if (players.length === 1) {
+            playerText = players[0];
+        } else if (players.length === 2) {
+            playerText = `${players[0]} & ${players[1]}`;
+        } else {
+            playerText = players.slice(0, -1).join(', ') + ', & ' + players[players.length - 1];
+        }
+
+        const aspectsPerPlayer = (2 / players.length);
+        const aspectsText = aspectsPerPlayer % 1 === 0 ? aspectsPerPlayer.toString() : aspectsPerPlayer.toFixed(2);
+
         const embed = new EmbedBuilder()
-            .setTitle(`${player1}, ${player2}, ${player3}, & ${player4} Completed ${raids[raidID]}`)
-            .setDescription(`All time ${raidsAbbr[raidID]}'s: ${specificRaidCount}\nAll time guild raids: ${totalRaidCount}\nGuild raids this week: ${weeklyRaidCount}`)
+            .setTitle(`${playerText} Completed ${raids[raidID]}`)
+            .setDescription(
+                `Players: **${players.length}** · Aspects each: **${aspectsText}**\n` +
+                `All time ${raidsAbbr[raidID]}'s: ${specificRaidCount}\n` +
+                `All time guild raids: ${totalRaidCount}\n` +
+                `Guild raids this week: ${weeklyRaidCount}`
+            )
             .setColor(0x0099FF)
 
         const messageOptions = { embeds: [embed] };

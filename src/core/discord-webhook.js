@@ -37,11 +37,11 @@ class DiscordWebhook {
             }
 
             const existingWebhooks = await channel.fetchWebhooks();
-            let webhook = existingWebhooks.find(w => w.name === 'WynnTracker Chat Bridge');
+            let webhook = existingWebhooks.find(w => w.name === 'CirrusTracker');
 
             if (!webhook) {
                 webhook = await channel.createWebhook({
-                    name: 'WynnTracker Chat Bridge',
+                    name: 'CirrusTracker',
                     reason: 'Chat bridge between Minecraft and Discord'
                 });
                 console.log(`Created new webhook for channel ${channel.name}: ${webhook.name}`);
@@ -110,7 +110,7 @@ class DiscordWebhook {
 }
 
     async sendMinecraftSkinMessage(username, message, uuid = null) {
-        let avatarUrl = `https://images.weserv.nl/?url=crafatar.com/renders/head/${uuid}?overlay=true&w=64&h=64&output=png&we`;
+        let avatarUrl = `https://vzge.me/bust/128/${username}`;
         return await this.sendMessage(username, message, avatarUrl);
     }
 }

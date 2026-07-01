@@ -7,6 +7,37 @@ const mojangServerIds = new Map();
 const TOKEN_EXPIRY_TIME = 6 * 60 * 60 * 1000;
 const VALIDATION_CACHE_TIME = 30 * 60 * 1000;
 
+// Rate limiting for log spam
+const logCooldowns = new Map();
+const LOG_COOLDOWN_MS = 60 * 1000; // 1 minute cooldown per unique log key
+
+function rateLimitedLog(key, message, isWarn = false) {
+    const now = Date.now();
+    const last = logCooldowns.get(key);
+    if (last && (now - last) < LOG_COOLDOWN_MS) return;
+    logCooldowns.set(key, now);
+    if (isWarn) console.warn(message);
+    else console.log(message);
+}
+
+// Cooldown for re-creating tokens after auth failure (prevent create-fail-remove-create loop)
+const authFailCooldowns = new Map();
+const AUTH_FAIL_COOLDOWN_MS = 2 * 60 * 1000; // 2 minute cooldown before allowing re-auth
+
+function setAuthFailCooldown(uuid) {
+    authFailCooldowns.set(uuid, Date.now());
+}
+
+function isInAuthFailCooldown(uuid) {
+    const lastFail = authFailCooldowns.get(uuid);
+    if (!lastFail) return false;
+    if ((Date.now() - lastFail) >= AUTH_FAIL_COOLDOWN_MS) {
+        authFailCooldowns.delete(uuid);
+        return false;
+    }
+    return true;
+}
+
 function addUser(uuid, wsToken, serverId = null) {
     removeToken(uuid);
     
@@ -58,7 +89,7 @@ function removeToken(uuid) {
         }
         
         tokenMap.delete(uuid);
-        console.log(`Removed all tokens for UUID: ${uuid}`);
+        rateLimitedLog(`remove-token-${uuid}`, `Removed all tokens for UUID: ${uuid}`);
     }
 }
 
@@ -113,13 +144,13 @@ function validateToken(tokenString) {
     }
 
     if (token.isExpired()) {
-        console.log(`Token expired for UUID ${uuid}`);
+        rateLimitedLog(`token-expired-${uuid}`, `Token expired for UUID ${uuid}`);
         removeToken(uuid);
         return { valid: false, reason: 'Token expired' };
     }
 
     if (!token.isAuthenticated()) {
-        return { valid: false, reason: 'Token not authenticated' };
+        return { valid: false, reason: 'Token not authenticated', _silent: true };
     }
 
     token.updateLastValidated();
@@ -276,5 +307,8 @@ module.exports = {
     getAuthenticationStatus,
     invalidateToken,
     invalidateUuidTokens,
+    isInAuthFailCooldown,
+    setAuthFailCooldown,
+    rateLimitedLog,
     Token
 };

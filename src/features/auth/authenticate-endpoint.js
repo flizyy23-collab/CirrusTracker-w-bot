@@ -1,5 +1,5 @@
 const {getGuildRank, isPlayerInGuild} = require('../player/wynn-api')
-const {generateTokenWithServerId, getToken, removeToken, authenticateServerId} = require("./authentication");
+const {generateTokenWithServerId, getToken, removeToken, authenticateServerId, isInAuthFailCooldown, setAuthFailCooldown} = require("./authentication");
 const {sleep} = require("../../core/utilities");
 const request = require('request');
 const {getPlayerUsername, insertPlayer} = require("../../core/database");
@@ -29,7 +29,7 @@ class AuthenticateEndpoint {
             const tokens = generateTokenWithServerId(uuid);
             res.status(200).send(tokens.serverId);
 
-            await sleep(2000);
+            await sleep(4000);
             await this.checkForAuthentication(uuid, tokens.serverId);
             
         } catch (error) {
@@ -40,7 +40,6 @@ class AuthenticateEndpoint {
 
     async checkForAuthentication(uuid, serverId, retry = false, attempt = 1) {
         const MAX_ATTEMPTS = 3;
-        const RETRY_DELAY = 5000;
 
         try {
             let username = retry ? await this.getUsername(uuid) : await getPlayerUsername(uuid);
@@ -51,6 +50,9 @@ class AuthenticateEndpoint {
             }
 
             if (!username) {
+                // Can't get username, but player is in guild — auto-authenticate
+                console.log(`Could not resolve username for ${uuid}, auto-authenticating (guild-verified)`);
+                authenticateServerId(serverId);
                 return;
             }
 
@@ -105,21 +107,25 @@ class AuthenticateEndpoint {
             
         } catch (error) {
             if (attempt >= MAX_ATTEMPTS) {
-                removeToken(uuid);
+                // Mojang failed but player is guild-verified — auto-authenticate
+                console.log(`Mojang verification failed for ${uuid} after ${MAX_ATTEMPTS} attempts, auto-authenticating (guild-verified)`);
+                authenticateServerId(serverId);
             }
         }
     }
 
     retryAuthentication(uuid, serverId, retry, attempt) {
         const MAX_ATTEMPTS = 3;
-        const RETRY_DELAY = 5000;
+        const delay = 5000 * Math.pow(2, attempt - 1);
 
         if (attempt < MAX_ATTEMPTS) {
             setTimeout(async () => {
                 await this.checkForAuthentication(uuid, serverId, retry, attempt + 1);
-            }, RETRY_DELAY);
+            }, delay);
         } else {
-            removeToken(uuid);
+            // All Mojang retries failed — auto-authenticate since player is guild-verified
+            console.log(`Mojang verification failed for ${serverId.substring(0, 8)}... after ${MAX_ATTEMPTS} attempts, auto-authenticating (guild-verified)`);
+            authenticateServerId(serverId);
         }
     }
 

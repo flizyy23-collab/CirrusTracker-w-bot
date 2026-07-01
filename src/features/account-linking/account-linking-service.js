@@ -212,6 +212,21 @@ class AccountLinkingService {
     }
 
     /**
+     * Get account link by Minecraft username
+     * @param {string} username - Minecraft username
+     * @returns {Object|null} Account link or null
+     */
+    async getLinkByUsername(username) {
+        try {
+            const { getAccountLinkByUsername } = require('../../core/database');
+            return await getAccountLinkByUsername(username);
+        } catch (err) {
+            console.error('Error getting account link by username:', err);
+            return null;
+        }
+    }
+
+    /**
      * Remove account link by Discord ID
      * @param {string} discordId - Discord user ID
      * @returns {boolean} Success status

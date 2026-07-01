@@ -2,6 +2,10 @@ const {getToken, getAuthenticationStatus, validateToken} = require("./authentica
 const {getGuildRank, isPlayerInGuild} = require('../player/wynn-api');
 const { config } = require("../../core/config");
 
+// Rate limit auth check failure logs
+const authCheckLogCooldowns = new Map();
+const AUTH_CHECK_LOG_COOLDOWN = 60 * 1000; // 1 minute
+
 class IsAuthenticatedEndpoint {
 
     async call(req, res) {
@@ -18,7 +22,13 @@ class IsAuthenticatedEndpoint {
             const authStatus = getAuthenticationStatus(uuid);
             
             if (!authStatus.authenticated) {
-                console.log(`Authentication check failed for ${uuid}: ${authStatus.reason}`);
+                // Rate-limit the log message per UUID
+                const now = Date.now();
+                const lastLog = authCheckLogCooldowns.get(uuid);
+                if (!lastLog || (now - lastLog) >= AUTH_CHECK_LOG_COOLDOWN) {
+                    authCheckLogCooldowns.set(uuid, now);
+                    console.log(`Authentication check failed for ${uuid}: ${authStatus.reason}`);
+                }
                 return res.status(401).json({
                     authenticated: false,
                     reason: authStatus.reason,

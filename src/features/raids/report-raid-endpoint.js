@@ -1,5 +1,5 @@
 const {getToken} = require("../auth/authentication");
-const {insertRaid, getPlayerUUID, insertPlayer} = require("../../core/database");
+const {insertRaid, getPlayerUUID, insertPlayer, checkRecentRaidExists} = require("../../core/database");
 const {requestUUID} = require("../../core/utilities");
 const {sendRaidEmbed} = require("./raid-message");
 
@@ -12,44 +12,61 @@ class ReportRaidEndpoint {
         let token = req.query.token;
         let {raid, player1, player2, player3, player4, reporter, seasonRating, guildXP} = req.query;
 
-        if (!raid || !token || !player1 || !player2 || !player3 || !player4 || !reporter || !seasonRating || !guildXP) return res.status(400).send("Missing parameters");
+        if (!raid || !token || !player1 || !reporter || !seasonRating || !guildXP) return res.status(400).send("Missing parameters");
 
-        const reportKey = `${player1}-${player2}--${player3}--${player4}`;
+        // Build players array (only player1 required)
+        const playerNames = [player1];
+        if (player2) playerNames.push(player2);
+        if (player3) playerNames.push(player3);
+        if (player4) playerNames.push(player4);
+
+        // In-memory dedup for rapid duplicate requests
+        const reportKey = `${raid}-${playerNames.sort().join('-')}`;
         if (this.recentRaids.has(reportKey)) {
-            await this.recentRaids.get(reportKey);
-            return res.status(200).send("Raid reported");
+            return res.status(200).send("Raid already reported");
         }
+        this.recentRaids.set(reportKey, true);
+        setTimeout(() => this.recentRaids.delete(reportKey), 1000 * 60 * 5);
 
-        const reportPromise = (async () => {
+        try {
             let tokenObject = await getToken(reporter);
 
             if (!tokenObject || tokenObject.serverId !== token || !tokenObject.isAuthenticated()) return res.status(400).send("Invalid token");
 
-            let players = [player1, player2, player3, player4];
+            let playerUuids = [];
 
-            for (let i = 0; i < players.length; i++) {
-                let player = players[i];
+            for (let i = 0; i < playerNames.length; i++) {
+                let player = playerNames[i];
 
                 let uuid = await getPlayerUUID(player);
 
                 if (!uuid) uuid = (await requestUUID(player))?.uuid;
                 if (!uuid) return res.status(400).send("Invalid player: " + player);
 
-                players[i] = uuid;
+                playerUuids.push(uuid);
             }
 
-            console.log("Reporting raid: ", raid, player1, player2, player3, player4, reporter, seasonRating, guildXP);
+            // DB-based dedup
+            const isDuplicate = await checkRecentRaidExists(raid, playerUuids);
+            if (isDuplicate) {
+                console.log("Raid already exists in DB, skipping: ", reportKey);
+                return res.status(200).send("Raid already reported");
+            }
 
-            await insertRaid(raid, players[0], players[1], players[2], players[3], reporter, seasonRating, guildXP);
+            // Ensure all players exist in the players table
+            for (let i = 0; i < playerUuids.length; i++) {
+                await insertPlayer(playerUuids[i], playerNames[i]);
+            }
+
+            console.log("Reporting raid: ", raid, playerNames.join(', '), reporter, seasonRating, guildXP);
+
+            await insertRaid(raid, playerUuids, reporter, seasonRating, guildXP);
             res.status(200).send("Raid reported");
-            await sendRaidEmbed(raid, player1, player2, player3, player4);
-            setTimeout(() => {
-                this.recentRaids.delete(reportKey);
-            }, 1000 * 60);
-        })();
-
-        this.recentRaids.set(reportKey, reportPromise);
-        await reportPromise;
+            await sendRaidEmbed(raid, playerNames);
+        } catch (err) {
+            console.error("Error reporting raid: ", err);
+            res.status(500).send("Error reporting raid");
+        }
     }
 }
 

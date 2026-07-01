@@ -10,7 +10,7 @@ const tierColors = {
     };
 
 function extractAllItemHashes(text) {
-    const itemHashStart = "󰀀󰄀";
+    const itemHashStart = "\u{F0000}\u{F0100}";
     const words = text.split(/\s+/);
     const itemHashes = [];
     
@@ -41,25 +41,55 @@ function analyzeAndFormatItems(text) {
                 results.forEach((result, index) => {
                     const hash = itemHashes[index];
                     updatedText = updatedText.replace(hash, result.itemName);
-                    let description = "";
-                    for (const [statName, statValue] of Object.entries(result.stats)) {
-                        const rateValue = result.rate[statName] || 0;
-                        description += `${statValue} ${statName} - ${rateValue}%\n`;
+
+                    // Calculate overall average
+                    let totalRate = 0, statCount = 0;
+                    for (const statName of Object.keys(result.stats)) {
+                        const rateValue = parseFloat(result.rate[statName]) || 0;
+                        totalRate += rateValue;
+                        statCount++;
                     }
-                    description = description.trim();
+                    const overallStr = statCount > 0 ? (totalRate / statCount).toFixed(2) : "0.00";
+
+                    // Build stat lines
+                    let statLines = [];
+                    for (const [statName, statValue] of Object.entries(result.stats)) {
+                        const rateValue = result.rate[statName];
+                        const rateStr = (typeof rateValue === 'number') ? rateValue.toFixed(2) : rateValue;
+
+                        let displayStat, displayValue;
+                        const sign = statValue >= 0 ? "+" : "";
+                        if (statName.endsWith(' %')) {
+                            displayStat = statName.slice(0, -2);
+                            displayValue = sign + statValue + "%";
+                        } else {
+                            displayStat = statName;
+                            displayValue = sign + statValue;
+                        }
+
+                        statLines.push(displayValue + " " + displayStat + " **[" + rateStr + "%]**");
+                    }
+
+                    let description = statLines.join("\n");
+
+                    let footerParts = [];
+                    footerParts.push("Rerolls: " + result.reroll);
+                    if (result.shiny && result.shiny !== '' && result.shiny !== 'null') {
+                        footerParts.push("\u2728 " + result.shiny);
+                    }
 
                     embeds.push({
-                        "title": result.itemName,
+                        "title": result.itemName + " [" + overallStr + "%]",
                         "description": description,
-                        "color": tierColors[result.tier],
+                        "color": tierColors[result.tier] || tierColors["common"],
                         "footer": {
-                            "text": `reroll count: ${result.reroll}`
+                            "text": footerParts.join("  \u2022  ")
                         }
                     });
                 });
                 
                 resolve({
-                    "content": `${updatedText}\n`,
+                    "content": "",
                     "embeds": embeds,
                     "attachments": []
                 });

@@ -1,6 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { rankService } = require('../../features/ranks/rank-service');
 
+const CHIEF_ROLE_ID = '1459230233902448803';
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('setrank')
@@ -60,9 +62,10 @@ module.exports = {
             // Check if setter has admin permissions or appropriate rank
             const setterMember = interaction.member;
             const isAdmin = setterMember.permissions.has('Administrator');
+            const isChief = setterMember.roles.cache.has(CHIEF_ROLE_ID);
             const setterRank = await rankService.getMemberRank(setterDiscordId);
             
-            if (!isAdmin && !setterRank) {
+            if (!isAdmin && !isChief && !setterRank) {
                 const errorEmbed = new EmbedBuilder()
                     .setColor(0xff0000)
                     .setTitle('❌ Insufficient Permissions')
@@ -131,7 +134,7 @@ module.exports = {
             await interaction.editReply({ embeds: [successEmbed] });
 
             // Log the rank change
-            const setterInfo = isAdmin ? 'Admin' : (setterRank ? setterRank.identifier : 'Unknown');
+            const setterInfo = isAdmin ? 'Admin' : isChief ? 'Chief' : (setterRank ? setterRank.identifier : 'Unknown');
             console.log(`Rank change: ${interaction.user.username} (${setterInfo}) set ${targetUser.username} to ${newRankConfig.identifier}`);
 
         } catch (error) {

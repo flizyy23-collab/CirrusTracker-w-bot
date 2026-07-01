@@ -1,23 +1,29 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
-const { getPlayerUUID, getPlayerUsername, setAspects, getRaids } = require("../../core/database");
+const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { getPlayerUUID, getPlayerUsername, setAspects } = require("../../core/database");
+
+const CHIEF_ROLE_ID = '1459230233902448803';
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('setaspects')
-        .setDescription('Manually set how many aspects a player has received')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .setDescription('Manually set how many aspects a player is owed (overrides calculation)')
         .addStringOption(option =>
             option.setName('player')
                 .setDescription('The Wynncraft username of the player')
                 .setRequired(true))
         .addNumberOption(option =>
-            option.setName('amount')
-                .setDescription('The total number of aspects this player has received')
-                .setRequired(true)
-                .setMinValue(0)),
+            option.setName('owed')
+                .setDescription('The number of aspects this player is owed (can be negative)')
+                .setRequired(true)),
     async execute(interaction) {
+        const isAdmin = interaction.member.permissions.has('Administrator');
+        const isChief = interaction.member.roles.cache.has(CHIEF_ROLE_ID);
+        if (!isAdmin && !isChief) {
+            return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+        }
+
         const playerName = interaction.options.getString('player');
-        const amount = interaction.options.getNumber('amount');
+        const owed = interaction.options.getNumber('owed');
 
         const uuid = await getPlayerUUID(playerName);
         if (!uuid) {
@@ -27,20 +33,12 @@ module.exports = {
 
         const resolvedName = await getPlayerUsername(uuid) || playerName;
 
-        const raids = await getRaids(uuid);
-        // Work backwards: if we want them to be owed X, then received = raids*0.5 - X
-        const received = (raids.length * 0.5) - amount;
-
-        await setAspects(uuid, received, interaction.user.username);
+        await setAspects(uuid, owed, interaction.user.username);
 
         const embed = new EmbedBuilder()
             .setColor(0x0099FF)
             .setTitle('Aspects Updated')
-            .setDescription(`**${resolvedName}** is now owed **${amount}** aspects`)
-            .addFields(
-                { name: 'Total Raids', value: `\`\`\`${raids.length}\`\`\``, inline: true },
-                { name: 'Aspects Owed', value: `\`\`\`${amount}\`\`\``, inline: true }
-            )
+            .setDescription(`**${resolvedName}** is now owed **${owed}** aspects`)
             .setFooter({ text: `Updated by ${interaction.user.username}` });
 
         await interaction.reply({ embeds: [embed] });

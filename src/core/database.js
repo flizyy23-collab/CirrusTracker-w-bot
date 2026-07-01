@@ -1,4 +1,5 @@
 const mysql = require('mysql2/promise');
+const request = require('request');
 const {getPlayerGuildInfo} = require("../features/player/wynn-api");
 const { config } = require("./config");
 const {removeToken} = require("../features/auth/authentication");
@@ -113,6 +114,16 @@ async function createTables() {
             console.log("Guild_rank column may already exist, continuing...");
         }
 
+        // Add owed_override column for manual aspect overrides
+        try {
+            await connection.execute(`
+                ALTER TABLE players 
+                ADD COLUMN IF NOT EXISTS owed_override FLOAT DEFAULT NULL;
+            `);
+        } catch (alterErr) {
+            console.log("owed_override column may already exist, continuing...");
+        }
+
         // Migrate existing verified links to players table
         try {
             const migrationQuery = `
@@ -130,25 +141,153 @@ async function createTables() {
             console.log("Migration may have already been completed or no verified links exist");
         }
 
+        // Create name_aliases table for tracking old/changed usernames
+        try {
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS name_aliases (
+                    old_name VARCHAR(30) NOT NULL PRIMARY KEY,
+                    current_name VARCHAR(30) NOT NULL
+                );
+            `);
+        } catch (aliasErr) {
+            console.log("name_aliases table may already exist, continuing...");
+        }
+
+        // Create giveaways table
+        try {
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS giveaways (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    channel_id VARCHAR(20) NOT NULL,
+                    message_id VARCHAR(20) DEFAULT NULL,
+                    host_id VARCHAR(20) NOT NULL,
+                    title VARCHAR(256) NOT NULL,
+                    prizes TEXT NOT NULL,
+                    winner_count INT NOT NULL DEFAULT 1,
+                    mode VARCHAR(20) NOT NULL DEFAULT 'equal',
+                    allow_unlinked BOOLEAN DEFAULT TRUE,
+                    weights TEXT DEFAULT '{}',
+                    entries TEXT DEFAULT '[]',
+                    winners TEXT DEFAULT '[]',
+                    ends_at TIMESTAMP NOT NULL,
+                    ended BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            `);
+        } catch (giveawayErr) {
+            console.log("giveaways table may already exist, continuing...");
+        }
+
+        // Add new columns to giveaways if they don't exist
+        try {
+            await connection.execute(`ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS mode VARCHAR(20) NOT NULL DEFAULT 'equal'`);
+            await connection.execute(`ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS allow_unlinked BOOLEAN DEFAULT TRUE`);
+            await connection.execute(`ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS weights TEXT DEFAULT '{}'`);
+            await connection.execute(`ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS excluded TEXT DEFAULT '[]'`);
+        } catch (e) {
+            console.log("Giveaway columns may already exist, continuing...");
+        }
+
+        // Migration: make player_2/3/4 nullable and add player_count for variable-size raids
+        try {
+            await connection.execute(`ALTER TABLE raids MODIFY COLUMN player_2 VARCHAR(36) DEFAULT NULL`);
+            await connection.execute(`ALTER TABLE raids MODIFY COLUMN player_3 VARCHAR(36) DEFAULT NULL`);
+            await connection.execute(`ALTER TABLE raids MODIFY COLUMN player_4 VARCHAR(36) DEFAULT NULL`);
+            await connection.execute(`ALTER TABLE raids ADD COLUMN IF NOT EXISTS player_count TINYINT NOT NULL DEFAULT 4`);
+        } catch (e) {
+            console.log("Raids columns may already be updated, continuing...");
+        }
+
+        // Migration: add weight_config column to giveaways
+        try {
+            await connection.execute(`ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS weight_config TEXT DEFAULT '{}'`);
+        } catch (e) {
+            console.log("Giveaway weight_config column may already exist, continuing...");
+        }
+
+        // Create world_events table for Annihilation event tracking
+        try {
+            await connection.execute(`
+                CREATE TABLE IF NOT EXISTS world_events (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    event_name VARCHAR(100) NOT NULL,
+                    scheduled_time TIMESTAMP NOT NULL,
+                    is_predicted BOOLEAN DEFAULT FALSE,
+                    api_status VARCHAR(20) DEFAULT 'unknown',
+                    last_api_check TIMESTAMP NULL DEFAULT NULL,
+                    last_api_error TEXT DEFAULT NULL,
+                    api_retry_count INT DEFAULT 0,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_event (event_name),
+                    INDEX idx_scheduled_time (scheduled_time)
+                );
+            `);
+        } catch (worldEventsErr) {
+            console.log("world_events table may already exist, continuing...");
+        }
+
         connection.release();
     } catch (err) {
         console.error("Error creating table: ", err);
     }
 }
 
-async function insertRaid(raid, player1, player2, player3, player4, reporter, seasonRating, guildXP) {
+async function insertRaid(raid, players, reporter, seasonRating, guildXP) {
     try {
         const connection = await pool.getConnection();
+        const playerCount = players.length;
+        const p1 = players[0] || null;
+        const p2 = players[1] || null;
+        const p3 = players[2] || null;
+        const p4 = players[3] || null;
 
         const insertQuery = `
-            INSERT INTO raids (raid, player_1, player_2, player_3, player_4, reporter, season_rating, guild_xp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            INSERT INTO raids (raid, player_1, player_2, player_3, player_4, player_count, reporter, season_rating, guild_xp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
         `;
 
-        await connection.execute(insertQuery, [raid, player1, player2, player3, player4, reporter, seasonRating, guildXP]);
+        await connection.execute(insertQuery, [raid, p1, p2, p3, p4, playerCount, reporter, seasonRating, guildXP]);
+
+        // Increment owed_override by aspects per player (2 total / playerCount)
+        const aspectsPerPlayer = 2 / playerCount;
+        for (const playerUuid of players) {
+            await connection.execute(
+                `UPDATE players SET owed_override = owed_override + ? WHERE uuid = ? AND owed_override IS NOT NULL`,
+                [aspectsPerPlayer, playerUuid]
+            );
+        }
+
         connection.release();
     } catch (err) {
         console.error("Error inserting raid: ", err);
+    }
+}
+
+async function checkRecentRaidExists(raid, players) {
+    try {
+        const connection = await pool.getConnection();
+        const playerCount = players.length;
+        // Build conditions for each player slot
+        let conditions = [`raid = ?`, `player_count = ?`];
+        let params = [raid, playerCount];
+
+        for (let i = 0; i < 4; i++) {
+            if (i < playerCount) {
+                conditions.push(`player_${i + 1} IN (${players.map(() => '?').join(', ')})`);
+                params.push(...players);
+            } else {
+                conditions.push(`player_${i + 1} IS NULL`);
+            }
+        }
+        conditions.push(`time > DATE_SUB(NOW(), INTERVAL 10 MINUTE)`);
+
+        const query = `SELECT id FROM raids WHERE ${conditions.join(' AND ')} LIMIT 1`;
+        const [rows] = await connection.execute(query, params);
+        connection.release();
+        return rows.length > 0;
+    } catch (err) {
+        console.error("Error checking for recent raid: ", err);
+        return false;
     }
 }
 
@@ -162,29 +301,28 @@ async function insertAspect(giver, receiver, reporter) {
         `;
 
         await connection.execute(insertQuery, [giver, receiver, reporter]);
+
+        // If player has an owed_override, decrement it by 1
+        await connection.execute(
+            `UPDATE players SET owed_override = owed_override - 1 WHERE uuid = ? AND owed_override IS NOT NULL`,
+            [receiver]
+        );
+
         connection.release();
     } catch (err) {
         console.error("Error inserting aspect: ", err);
     }
 }
 
-async function setAspects(receiverUuid, amount, reporter) {
+async function setAspects(receiverUuid, owedAmount, reporter) {
     try {
         const connection = await pool.getConnection();
-
-        // Delete all existing aspect records for this player
-        await connection.execute(`DELETE FROM aspects WHERE receiver = ?`, [receiverUuid]);
-
-        // Insert new records — each record = 0.5 aspects
-        const insertCount = Math.round(amount / 0.5);
-        for (let i = 0; i < insertCount; i++) {
-            await connection.execute(
-                `INSERT INTO aspects (giver, receiver, reporter) VALUES (?, ?, ?)`,
-                [receiverUuid, receiverUuid, reporter]
-            );
-        }
-
+        await connection.execute(
+            `UPDATE players SET owed_override = ? WHERE uuid = ?`,
+            [owedAmount, receiverUuid]
+        );
         connection.release();
+        console.log(`Set owed_override for ${receiverUuid} to ${owedAmount} (by ${reporter})`);
     } catch (err) {
         console.error("Error setting aspects: ", err);
     }
@@ -328,7 +466,7 @@ async function updateUsername(uuid) {
     }
 }
 
-async function getRaids(uuid, timestamp = null) {
+async function getRaids(uuid, timestamp = null, endTimestamp = null) {
     try {
         const connection = await pool.getConnection();
 
@@ -342,6 +480,11 @@ async function getRaids(uuid, timestamp = null) {
         if (timestamp) {
             query += ` AND time > ?`;
             params.push(timestamp);
+        }
+
+        if (endTimestamp) {
+            query += ` AND time < ?`;
+            params.push(endTimestamp);
         }
 
         const [rows] = await connection.execute(query, params);
@@ -423,11 +566,21 @@ async function getOwedAspects() {
 
             if (!needsAspects) continue;
 
-            let aspects = await getAspects(uuid);
-            let raids = await getRaids(uuid);
-
-            let totalAspects = aspects.length;
-            let owedAspects = (raids.length * 0.5) - totalAspects;
+            let owedAspects;
+            if (row.owed_override !== null && row.owed_override !== undefined) {
+                owedAspects = row.owed_override;
+            } else {
+                let aspects = await getAspects(uuid);
+                let raids = await getRaids(uuid);
+                let totalAspects = aspects.length;
+                // Calculate owed based on actual player count per raid (2 aspects / playerCount)
+                let earnedAspects = 0;
+                for (const raid of raids) {
+                    const playerCount = raid.player_count || 4;
+                    earnedAspects += 2 / playerCount;
+                }
+                owedAspects = earnedAspects - totalAspects;
+            }
 
             playerMap.set(uuid, owedAspects);
         }
@@ -437,10 +590,6 @@ async function getOwedAspects() {
 
         playerMap = new Map([...playerMap.entries()].sort((a, b) => b[1] - a[1]));
 
-        let playerArray = [...playerMap.entries()];
-        playerArray = playerArray.filter(([key, value]) => value !== 0);
-        playerMap = new Map(playerArray);
-
         return playerMap;
     } catch (err) {
         console.error("Error getting owed aspects: ", err);
@@ -449,7 +598,7 @@ async function getOwedAspects() {
     return [];
 }
 
-async function getLeaderboard(raid, timestamp = null) {
+async function getLeaderboard(raid, timestamp = null, endTimestamp = null) {
     try {
         let playerMap = new Map();
 
@@ -462,7 +611,7 @@ async function getLeaderboard(raid, timestamp = null) {
 
         for (const row of rows) {
             let uuid = row.uuid;
-            let raids = await getRaids(uuid, timestamp);
+            let raids = await getRaids(uuid, timestamp, endTimestamp);
 
             let raidCount = 0;
             for (const raidRow of raids) {
@@ -488,23 +637,32 @@ async function getLeaderboard(raid, timestamp = null) {
     return [];
 }
 
-async function getGXPLeaderboard(timestamp = null) {
+async function getGXPLeaderboard(timestamp = null, endTimestamp = null) {
     try {
         let playerMap = new Map();
 
         const connection = await pool.getConnection();
-        let query = `SELECT player_1, player_2, player_3, player_4, guild_xp FROM raids`;
+        let query = `SELECT player_1, player_2, player_3, player_4, player_count, guild_xp FROM raids`;
         let params = [];
+        const conditions = [];
 
         if (timestamp) {
-            query += ` WHERE time > ?`;
+            conditions.push(`time > ?`);
             params.push(timestamp);
+        }
+        if (endTimestamp) {
+            conditions.push(`time < ?`);
+            params.push(endTimestamp);
+        }
+        if (conditions.length > 0) {
+            query += ` WHERE ${conditions.join(' AND ')}`;
         }
 
         const [rows] = await connection.execute(query, params);
 
         for (const row of rows) {
-            let guildXP = row.guild_xp / 4;
+            const playerCount = row.player_count || 4;
+            let guildXP = row.guild_xp / playerCount;
 
             if (row.player_1) playerMap.set(row.player_1, (playerMap.get(row.player_1) || 0) + guildXP);
             if (row.player_2) playerMap.set(row.player_2, (playerMap.get(row.player_2) || 0) + guildXP);
@@ -731,6 +889,36 @@ async function getAccountLinkByMinecraft(minecraftUuid) {
     }
 }
 
+async function getAccountLinkByUsername(username) {
+    try {
+        const connection = await pool.getConnection();
+        
+        const selectQuery = `
+            SELECT p.uuid, p.username, p.guild, p.needs_aspects, p.discord_id, al.verified_at
+            FROM players p
+            LEFT JOIN account_links al ON p.uuid = al.minecraft_uuid AND al.verified = TRUE
+            WHERE LOWER(p.username) = LOWER(?) AND p.discord_id IS NOT NULL;
+        `;
+        
+        const [rows] = await connection.execute(selectQuery, [username]);
+        connection.release();
+        
+        if (rows.length === 0) return null;
+        
+        const player = rows[0];
+        return {
+            discord_id: player.discord_id,
+            minecraft_uuid: player.uuid,
+            minecraft_username: player.username,
+            verified: true,
+            verified_at: player.verified_at
+        };
+    } catch (err) {
+        console.error("Error getting account link by username: ", err);
+        return null;
+    }
+}
+
 async function removeAccountLink(discordId) {
     try {
         const connection = await pool.getConnection();
@@ -907,6 +1095,384 @@ async function getPlayerByDiscordId(discordId) {
     }
 }
 
-module.exports = { databaseInit, insertRaid, insertAspect, setAspects, getGXPLeaderboard, getPlayerUUID,
+async function syncGuildMembers() {
+    const guildName = config.get("guild-name") || "Cirrus";
+    const guildTag = config.get("guild-tag");
+    console.log(`Syncing guild members for ${guildName}...`);
+
+    try {
+        const token = config.get("wynncraft-token");
+        const guildData = await new Promise((resolve, reject) => {
+            const options = {
+                url: `https://api.wynncraft.com/v3/guild/${guildName}`,
+                headers: token && token !== "WYNNCRAFT_API_TOKEN" ? { Authorization: `Bearer ${token}` } : {}
+            };
+            request(options, (error, response, body) => {
+                if (!error && response.statusCode === 200) resolve(JSON.parse(body));
+                else reject(new Error(error ? error.message : `Status ${response.statusCode}`));
+            });
+        });
+
+        const ranks = ['owner', 'chief', 'strategist', 'captain', 'recruiter', 'recruit'];
+        let added = 0;
+        for (const rank of ranks) {
+            const members = guildData.members[rank];
+            if (!members) continue;
+            for (const [username, data] of Object.entries(members)) {
+                try {
+                    const connection = await pool.getConnection();
+                    const [existing] = await connection.execute('SELECT uuid FROM players WHERE uuid = ?', [data.uuid]);
+                    if (existing.length === 0) {
+                        await connection.execute(
+                            'INSERT INTO players (uuid, username, guild, guild_rank, needs_aspects) VALUES (?, ?, ?, ?, 1)',
+                            [data.uuid, username, guildTag, ranks.indexOf(rank)]
+                        );
+                        added++;
+                        console.log(`Added new guild member: ${username} (${data.uuid})`);
+                    }
+                    connection.release();
+                } catch (err) {
+                    console.error(`Error syncing member ${username}:`, err.message);
+                }
+            }
+        }
+        console.log(`Guild sync complete. Added ${added} new members.`);
+    } catch (err) {
+        console.error("Error syncing guild members:", err.message);
+    }
+}
+
+// Fetch current guild members live from Wynncraft API (not DB)
+async function fetchLiveGuildMembers() {
+    const guildName = config.get("guild-name") || "Cirrus";
+    try {
+        const token = config.get("wynncraft-token");
+        const guildData = await new Promise((resolve, reject) => {
+            const options = {
+                url: `https://api.wynncraft.com/v3/guild/${guildName}`,
+                headers: token && token !== "WYNNCRAFT_API_TOKEN" ? { Authorization: `Bearer ${token}` } : {}
+            };
+            request(options, (error, response, body) => {
+                if (!error && response.statusCode === 200) resolve(JSON.parse(body));
+                else reject(new Error(error ? error.message : `Status ${response.statusCode}`));
+            });
+        });
+
+        const ranks = ['owner', 'chief', 'strategist', 'captain', 'recruiter', 'recruit'];
+        const members = [];
+        for (const rank of ranks) {
+            const rankMembers = guildData.members[rank];
+            if (!rankMembers) continue;
+            for (const [username, data] of Object.entries(rankMembers)) {
+                members.push({ username, uuid: data.uuid, rank });
+            }
+        }
+        return members;
+    } catch (err) {
+        console.error("Error fetching live guild members:", err.message);
+        return [];
+    }
+}
+
+async function addAlias(oldName, currentName) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(
+            `INSERT INTO name_aliases (old_name, current_name) VALUES (?, ?) ON DUPLICATE KEY UPDATE current_name = ?`,
+            [oldName.toLowerCase(), currentName, currentName]
+        );
+        connection.release();
+        return true;
+    } catch (err) {
+        console.error("Error adding alias:", err.message);
+        return false;
+    }
+}
+
+async function removeAlias(oldName) {
+    try {
+        const connection = await pool.getConnection();
+        const [result] = await connection.execute(
+            `DELETE FROM name_aliases WHERE old_name = ?`,
+            [oldName.toLowerCase()]
+        );
+        connection.release();
+        return result.affectedRows > 0;
+    } catch (err) {
+        console.error("Error removing alias:", err.message);
+        return false;
+    }
+}
+
+async function resolveAlias(name) {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.execute(
+            `SELECT current_name FROM name_aliases WHERE old_name = ?`,
+            [name.toLowerCase()]
+        );
+        connection.release();
+        return rows.length > 0 ? rows[0].current_name : null;
+    } catch (err) {
+        return null;
+    }
+}
+
+async function getAliases() {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.execute(`SELECT old_name, current_name FROM name_aliases ORDER BY old_name`);
+        connection.release();
+        return rows;
+    } catch (err) {
+        console.error("Error getting aliases:", err.message);
+        return [];
+    }
+}
+
+// ---- Giveaway functions ----
+
+async function createGiveaway(channelId, hostId, title, prizes, winnerCount, endsAt, mode = 'equal', allowUnlinked = true) {
+    try {
+        const connection = await pool.getConnection();
+        const [result] = await connection.execute(
+            `INSERT INTO giveaways (channel_id, host_id, title, prizes, winner_count, ends_at, mode, allow_unlinked) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [channelId, hostId, title, JSON.stringify(prizes), winnerCount, endsAt, mode, allowUnlinked]
+        );
+        connection.release();
+        return result.insertId;
+    } catch (err) {
+        console.error("Error creating giveaway:", err);
+        return null;
+    }
+}
+
+async function setGiveawayMessageId(giveawayId, messageId) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(`UPDATE giveaways SET message_id = ? WHERE id = ?`, [messageId, giveawayId]);
+        connection.release();
+    } catch (err) {
+        console.error("Error setting giveaway message_id:", err);
+    }
+}
+
+async function getGiveaway(giveawayId) {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.execute(`SELECT * FROM giveaways WHERE id = ?`, [giveawayId]);
+        connection.release();
+        if (rows.length === 0) return null;
+        const g = rows[0];
+        g.entries = JSON.parse(g.entries || '[]');
+        g.prizes = JSON.parse(g.prizes || '[]');
+        g.winners = JSON.parse(g.winners || '[]');
+        g.weights = JSON.parse(g.weights || '{}');
+        g.excluded = JSON.parse(g.excluded || '[]');
+        g.weight_config = JSON.parse(g.weight_config || '{}');
+        return g;
+    } catch (err) {
+        console.error("Error getting giveaway:", err);
+        return null;
+    }
+}
+
+async function getGiveawayByMessageId(messageId) {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.execute(`SELECT * FROM giveaways WHERE message_id = ?`, [messageId]);
+        connection.release();
+        if (rows.length === 0) return null;
+        const g = rows[0];
+        g.entries = JSON.parse(g.entries || '[]');
+        g.prizes = JSON.parse(g.prizes || '[]');
+        g.winners = JSON.parse(g.winners || '[]');
+        g.weights = JSON.parse(g.weights || '{}');
+        g.excluded = JSON.parse(g.excluded || '[]');
+        g.weight_config = JSON.parse(g.weight_config || '{}');
+        return g;
+    } catch (err) {
+        console.error("Error getting giveaway by message:", err);
+        return null;
+    }
+}
+
+async function getGiveawayByTitle(title) {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.execute(`SELECT * FROM giveaways WHERE title = ? ORDER BY id DESC LIMIT 1`, [title]);
+        connection.release();
+        if (rows.length === 0) return null;
+        const g = rows[0];
+        g.entries = JSON.parse(g.entries || '[]');
+        g.prizes = JSON.parse(g.prizes || '[]');
+        g.winners = JSON.parse(g.winners || '[]');
+        g.weights = JSON.parse(g.weights || '{}');
+        g.excluded = JSON.parse(g.excluded || '[]');
+        g.weight_config = JSON.parse(g.weight_config || '{}');
+        return g;
+    } catch (err) {
+        console.error("Error getting giveaway by title:", err);
+        return null;
+    }
+}
+
+async function addGiveawayEntry(giveawayId, userId) {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.execute(`SELECT entries FROM giveaways WHERE id = ? AND ended = FALSE`, [giveawayId]);
+        if (rows.length === 0) { connection.release(); return false; }
+        const entries = JSON.parse(rows[0].entries || '[]');
+        if (entries.includes(userId)) { connection.release(); return false; }
+        entries.push(userId);
+        await connection.execute(`UPDATE giveaways SET entries = ? WHERE id = ?`, [JSON.stringify(entries), giveawayId]);
+        connection.release();
+        return true;
+    } catch (err) {
+        console.error("Error adding giveaway entry:", err);
+        return false;
+    }
+}
+
+async function endGiveaway(giveawayId, winners) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(
+            `UPDATE giveaways SET ended = TRUE, winners = ? WHERE id = ?`,
+            [JSON.stringify(winners), giveawayId]
+        );
+        connection.release();
+    } catch (err) {
+        console.error("Error ending giveaway:", err);
+    }
+}
+
+async function updateGiveawayWeights(giveawayId, weights) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(`UPDATE giveaways SET weights = ? WHERE id = ?`, [JSON.stringify(weights), giveawayId]);
+        connection.release();
+    } catch (err) {
+        console.error("Error updating giveaway weights:", err);
+    }
+}
+
+async function setGiveawayEntries(giveawayId, entries) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(`UPDATE giveaways SET entries = ? WHERE id = ?`, [JSON.stringify(entries), giveawayId]);
+        connection.release();
+    } catch (err) {
+        console.error("Error setting giveaway entries:", err);
+    }
+}
+
+async function setGiveawayExcluded(giveawayId, excluded) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(`UPDATE giveaways SET excluded = ? WHERE id = ?`, [JSON.stringify(excluded), giveawayId]);
+        connection.release();
+    } catch (err) {
+        console.error("Error setting giveaway excluded:", err);
+    }
+}
+
+async function setGiveawayWeightConfig(giveawayId, weightConfig) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(`UPDATE giveaways SET weight_config = ? WHERE id = ?`, [JSON.stringify(weightConfig), giveawayId]);
+        connection.release();
+    } catch (err) {
+        console.error("Error setting giveaway weight config:", err);
+    }
+}
+
+async function getActiveGiveaways() {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.execute(`SELECT * FROM giveaways WHERE ended = FALSE`);
+        connection.release();
+        return rows.map(g => {
+            g.entries = JSON.parse(g.entries || '[]');
+            g.prizes = JSON.parse(g.prizes || '[]');
+            g.winners = JSON.parse(g.winners || '[]');
+            g.weights = JSON.parse(g.weights || '{}');
+            g.excluded = JSON.parse(g.excluded || '[]');
+            g.weight_config = JSON.parse(g.weight_config || '{}');
+            return g;
+        });
+    } catch (err) {
+        console.error("Error getting active giveaways:", err);
+        return [];
+    }
+}
+
+module.exports = { pool, getPool: () => pool, databaseInit, insertRaid, insertAspect, setAspects, getGXPLeaderboard, getPlayerUUID,
     getPlayerUsername, insertPlayer, getRaids, getRaidCount, getAspects, getOwedAspects, getLeaderboard, updateGuild, updateUsername, getPlayers, getPlayersByGuild, getGuild, toggleNeedsAspects,
-    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks, getAccountLinksForPlayers, getPlayerByDiscordId };
+    createAccountLink, verifyAccountLink, getAccountLink, getAccountLinkByMinecraft, getAccountLinkByUsername, removeAccountLink, removeAccountLinkByMinecraft, getUnverifiedAccountLink, cleanupExpiredLinks, getPlayersWithVerifiedLinks, getAccountLinksForPlayers, getPlayerByDiscordId, syncGuildMembers, fetchLiveGuildMembers,
+    addAlias, removeAlias, resolveAlias, getAliases, checkRecentRaidExists,
+    createGiveaway, setGiveawayMessageId, getGiveaway, getGiveawayByMessageId, getGiveawayByTitle, addGiveawayEntry, endGiveaway, getActiveGiveaways, updateGiveawayWeights, setGiveawayEntries, setGiveawayExcluded, setGiveawayWeightConfig,
+    getWorldEvent, setWorldEvent, updateWorldEventStatus, logWorldEventError };
+
+async function getWorldEvent(eventName) {
+    try {
+        const connection = await pool.getConnection();
+        const [rows] = await connection.execute(`SELECT * FROM world_events WHERE event_name = ?`, [eventName]);
+        connection.release();
+        return rows[0] || null;
+    } catch (err) {
+        console.error("Error getting world event:", err);
+        return null;
+    }
+}
+
+async function setWorldEvent(eventName, scheduledTime, isPredicted = false) {
+    try {
+        const connection = await pool.getConnection();
+        // First try to get existing event
+        const [existing] = await connection.execute(`SELECT id FROM world_events WHERE event_name = ?`, [eventName]);
+        
+        if (existing.length > 0) {
+            // Update existing
+            await connection.execute(
+                `UPDATE world_events SET scheduled_time = ?, is_predicted = ?, updated_at = CURRENT_TIMESTAMP WHERE event_name = ?`,
+                [scheduledTime, isPredicted, eventName]
+            );
+        } else {
+            // Insert new
+            await connection.execute(
+                `INSERT INTO world_events (event_name, scheduled_time, is_predicted, api_status) VALUES (?, ?, ?, 'pending')`,
+                [eventName, scheduledTime, isPredicted]
+            );
+        }
+        connection.release();
+    } catch (err) {
+        console.error("Error setting world event:", err);
+    }
+}
+
+async function updateWorldEventStatus(eventName, status) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(
+            `UPDATE world_events SET api_status = ?, last_api_check = CURRENT_TIMESTAMP, api_retry_count = 0, last_api_error = NULL WHERE event_name = ?`,
+            [status, eventName]
+        );
+        connection.release();
+    } catch (err) {
+        console.error("Error updating world event status:", err);
+    }
+}
+
+async function logWorldEventError(eventName, error) {
+    try {
+        const connection = await pool.getConnection();
+        await connection.execute(
+            `UPDATE world_events SET last_api_check = CURRENT_TIMESTAMP, api_retry_count = api_retry_count + 1, last_api_error = ? WHERE event_name = ?`,
+            [error.substring(0, 500), eventName]
+        );
+        connection.release();
+    } catch (err) {
+        console.error("Error logging world event error:", err);
+    }
+}

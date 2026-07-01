@@ -1,6 +1,6 @@
 const express = require('express');
 const http = require('http');
-const {databaseInit} = require("./core/database");
+const {databaseInit, syncGuildMembers} = require("./core/database");
 const {AuthenticateEndpoint} = require("./features/auth/authenticate-endpoint");
 const {ReportRaidEndpoint} = require("./features/raids/report-raid-endpoint");
 const {IsAuthenticatedEndpoint} = require("./features/auth/is-authenticated-endpoint");
@@ -15,6 +15,10 @@ const {PlayersEndpoint} = require("./features/player/players-endpoint");
 const { badgesService } = require("./features/badges/badges-service");
 const { config } = require("./core/config");
 const {websocketInit} = require("./features/websocket/websocket");
+const { initPlaytime } = require("./features/playtime/playtime-service");
+const { initTodo } = require("./discord/commands/todo-command");
+const { initWars } = require("./features/wars/wars-service");
+const { initGuildTracking } = require("./features/guild-tracking/guild-tracking-service");
 
 const app = express();
 const server = http.createServer(app);
@@ -28,12 +32,22 @@ server.listen(PORT, '0.0.0.0', async (error) => {
     registerEndpoints(app);
     await initQueue();
     websocketInit(server);
+
+    // Sync guild members on startup (adds any missing players)
+    syncGuildMembers().catch(err => console.error('Guild sync failed:', err));
     
     badgesService.initialize().then(() => {
         console.log('Badge system ready');
     }).catch(error => {
         console.error('Badge system failed to initialize:', error);
     });
+
+    // Initialize playtime tracking
+    const { pool } = require("./core/database");
+    initPlaytime(pool);
+    initTodo();
+    initWars(pool);
+    initGuildTracking();
 });
 
 const endpoints = {

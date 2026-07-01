@@ -5,7 +5,8 @@ const raids = [
   { name: "Nest of the Grootslangs", id: 0 },
   { name: "Orphion's Nexus of Light", id: 1 },
   { name: "The Canyon Colossus", id: 2 },
-  { name: "The Nameless Anomaly", id: 3 }
+  { name: "The Nameless Anomaly", id: 3 },
+  { name: "The Wartorn Palace", id: 4 }
 ]
 
 const raidsAbbr = [
@@ -13,6 +14,7 @@ const raidsAbbr = [
   { name: "NOL", id: 1 },
   { name: "TCC", id: 2 },
   { name: "TNA", id: 3 },
+  { name: "TWP", id: 4 },
 ]
 
 const mapping = {
@@ -208,6 +210,11 @@ function requestItemAnalysis(item) {
       if (!error && response.statusCode === 200) {
         try{
           let data = JSON.parse(body);
+          console.log('Nori API Result keys:', Object.keys(data.Result));
+          if (data.Result.misc) console.log('Nori misc keys:', Object.keys(data.Result.misc));
+          console.log('Nori scales:', JSON.stringify(data.Result.scales));
+          console.log('Nori weights:', JSON.stringify(data.Result.weights));
+          console.log('Nori shiny:', JSON.stringify(data.Result.shiny));
 
           function mapObjectKeys(obj, mapping) {
             const mappedObj = {};
@@ -225,6 +232,9 @@ function requestItemAnalysis(item) {
           const internalName = data.Result.internalName;
           const tier = data.Result.item_tier;
           const shiny = data.Result.shiny;
+          const overall = data.Result.overall;
+          const weight = data.Result.weights;
+          const scale = data.Result.scales;
           const mappedStats = mapObjectKeys(itemStats, mapping);
           const mappedRate = mapObjectKeys(rate, mapping);
 
@@ -235,7 +245,10 @@ function requestItemAnalysis(item) {
               reroll: reroll,
               internalName: internalName,
               tier,
-              shiny: shiny
+              shiny: shiny,
+              overall: overall,
+              weight: weight,
+              scale: scale
           };
           resolve(extractedData);
         } catch (err) {
@@ -248,4 +261,23 @@ function requestItemAnalysis(item) {
     });
   });
 }
-module.exports = {sleep, requestUUID, requestUsername, raids, daysToTimestamp, getLastPoolReset, requestItemAnalysis};
+
+function requestWynnPlayerUUID(username) {
+  return new Promise((resolve) => {
+    const url = `https://api.wynncraft.com/v3/player/${username}`;
+    request(url, function (error, response, body) {
+      if (!error && response.statusCode === 200) {
+        try {
+          const data = JSON.parse(body);
+          if (data && data.uuid) {
+            resolve(data.uuid);
+            return;
+          }
+        } catch (e) {}
+      }
+      resolve(null);
+    });
+  });
+}
+
+module.exports = {sleep, requestUUID, requestUsername, requestWynnPlayerUUID, raids, daysToTimestamp, getLastPoolReset, requestItemAnalysis};

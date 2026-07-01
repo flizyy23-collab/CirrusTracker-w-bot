@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const crypto = require('crypto');
 const { PacketHandler } = require('./packet-handler');
-const { findUuidByToken, validateToken } = require('../auth/authentication');
+const { findUuidByToken, validateToken, rateLimitedLog } = require('../auth/authentication');
 
 class WebSocketManager {
     constructor() {
@@ -40,12 +40,15 @@ class WebSocketManager {
                 uuid = tokenValidation.uuid;
                 console.log(`Authenticated connection for UUID: ${uuid}`);
             } else {
-                console.warn(`Invalid token provided: ${token} - ${tokenValidation.reason}`);
+                // Only log if not a silent "not authenticated yet" case
+                if (!tokenValidation._silent) {
+                    rateLimitedLog(`ws-invalid-${token.substring(0, 8)}`, `Invalid token provided: ${token.substring(0, 8)}... - ${tokenValidation.reason}`, true);
+                }
                 ws.close(1008, `Invalid authentication token: ${tokenValidation.reason}`);
                 return;
             }
         } else {
-            console.warn(`No token provided in connection headers`);
+            rateLimitedLog('ws-no-token', 'No token provided in connection headers', true);
             ws.close(1008, 'Missing authentication token');
             return;
         }

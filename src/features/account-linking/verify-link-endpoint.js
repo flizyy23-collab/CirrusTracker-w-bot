@@ -7,7 +7,6 @@ const { getToken } = require('../auth/authentication');
 class VerifyLinkEndpoint {
     async call(req, res) {
         try {
-            // Expect verification code and token as query parameters
             const { code, token, uuid } = req.query;
 
             if (!code) {
@@ -17,24 +16,22 @@ class VerifyLinkEndpoint {
                 });
             }
 
-            if (!token || !uuid) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Missing authentication token or UUID'
-                });
-            }
+            let result;
 
-            // Verify the authentication token for this UUID
-            const tokenObject = await getToken(uuid);
-            if (!tokenObject || tokenObject.serverId !== token || !tokenObject.isAuthenticated()) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'Invalid or expired authentication token'
-                });
+            if (token && uuid) {
+                // Full auth verification (from mod)
+                const tokenObject = await getToken(uuid);
+                if (!tokenObject || tokenObject.serverId !== token || !tokenObject.isAuthenticated()) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Invalid or expired authentication token'
+                    });
+                }
+                result = await accountLinkingService.verifyLinkWithAuth(code, uuid);
+            } else {
+                // Code-only verification (from browser/manual)
+                result = await accountLinkingService.verifyLink(code);
             }
-
-            // Verify the account link with additional UUID validation
-            const result = await accountLinkingService.verifyLinkWithAuth(code, uuid);
 
             if (result.success) {
                 // Try to assign linked role and ensure user has a rank role

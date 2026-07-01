@@ -22,10 +22,18 @@ class RankService {
 
     setDiscordClient(client) {
         this.discordClient = client;
+        this.guildId = config.get('discord-guild-id') || null;
         console.log(`Rank service Discord client set. Available guilds: ${client.guilds.cache.size}`);
         client.guilds.cache.forEach(guild => {
             console.log(`- Guild: ${guild.name} (${guild.id})`);
         });
+    }
+
+    getGuild() {
+        if (!this.discordClient) return null;
+        if (this.guildId) return this.discordClient.guilds.cache.get(this.guildId) || null;
+        // Fallback: use first available guild
+        return this.discordClient.guilds.cache.first() || null;
     }
 
     /**
@@ -97,7 +105,7 @@ class RankService {
         if (!this.discordClient) return;
 
         try {
-            const guild = this.discordClient.guilds.cache.first();
+            const guild = this.getGuild();
             if (!guild) {
                 console.error('No guilds found in Discord client cache for refreshMemberCache');
                 return;
@@ -154,7 +162,7 @@ class RankService {
             const cachedMember = this.memberCache.get(discordId);
             if (!cachedMember) {
                 // Member not found in cache, try individual fetch as fallback
-                const guild = this.discordClient.guilds.cache.first();
+                const guild = this.getGuild();
                 if (!guild) return null;
 
                 try {
@@ -234,7 +242,7 @@ class RankService {
                     // Try individual fetch for missing member (but with quick timeout)
                     try {
                         const member = await Promise.race([
-                            this.discordClient.guilds.cache.first().members.fetch(discordId),
+                            this.getGuild().members.fetch(discordId),
                             new Promise((_, reject) => 
                                 setTimeout(() => reject(new Error('Quick fetch timeout')), 1000)
                             )
@@ -273,7 +281,7 @@ class RankService {
      * Fetch missing members individually
      */
     async fetchMissingMembers(discordIds, rankMap) {
-        const guild = this.discordClient.guilds.cache.first();
+        const guild = this.getGuild();
         if (!guild) return;
 
         const fetchPromises = discordIds.map(async (discordId) => {
@@ -328,7 +336,7 @@ class RankService {
 
         try {
             // Get the guild - use first available guild from cache
-            const guild = this.discordClient.guilds.cache.first();
+            const guild = this.getGuild();
             if (!guild) {
                 console.error('No guilds found in Discord client cache');
                 return { success: false, error: 'No Discord server found. Bot may not be properly connected to a server.' };

@@ -16,7 +16,9 @@ const PACKET_TYPES = {
     DISCONNECT: 'disconnect',
     PONG: 'pong',
     CONNECT_ACK: 'connect_ack',
-    DISCONNECT_ACK: 'disconnect_ack'
+    DISCONNECT_ACK: 'disconnect_ack',
+    PARTY_INVITE: 'party_invite',
+    PARTY_UPDATE: 'party_update'
 };
 
 const pingHandler = async (client, packet) => {

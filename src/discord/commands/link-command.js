@@ -58,7 +58,7 @@ module.exports = {
                     .addFields(
                         { 
                             name: '📋 Command to Run', 
-                            value: `\`\`\`/tbgm link ${result.code}\`\`\``,
+                            value: `\`\`\`/${config.get('guild-tag').toLowerCase()} link ${result.code}\`\`\``,
                             inline: false 
                         },
                         { 
